@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.oppa.Launcher</id>
+  <name>Oppa</name>
+  <summary>Minecraft launcher with its own in-game mod</summary>
+  <developer id="io.github.kapaisu">
+    <name>kapaisu</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary=https://github.com/kapaisu/OppaClient/blob/main/LICENSE</project_license>
+  <launchable type="desktop-id">dev.oppa.Launcher.desktop</launchable>
+  <description>
+    <p>Oppa is a Minecraft launcher with a clean, native look.</p>
+    <ul>
+      <li>Microsoft sign-in that stays signed in</li>
+      <li>Vanilla, Fabric and Quilt instances</li>
+      <li>Mods, shaders and resource packs from Modrinth</li>
+      <li>Skin and cape changer with a 3D preview</li>
+      <li>An in-game mod with a HUD, menu and block overlay, installed automatically</li>
+    </ul>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Play</caption>
+      <image>https://raw.githubusercontent.com/kapaisu/OppaClient/main/data/screenshots/play.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Skin and cape</caption>
+      <image>https://raw.githubusercontent.com/kapaisu/OppaClient/main/data/screenshots/skin.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/kapaisu/OppaClient</url>
+  <url type="bugtracker">https://github.com/kapaisu/OppaClient/issues</url>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <keywords>
+    <keyword>minecraft</keyword>
+    <keyword>launcher</keyword>
+    <keyword>fabric</keyword>
+    <keyword>mods</keyword>
+  </keywords>
+  <branding>
+    <color type="primary" scheme_preference="light">#d8d8d8</color>
+    <color type="primary" scheme_preference="dark">#111111</color>
+  </branding>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-10-17"/>
+  </releases>
+</component>

@@ -35,10 +35,16 @@ then
 sudo pacman -Sy oppa
 ```
 
-Flatpak: download `oppa.flatpak` from the latest release, then
+Flatpak: add the Oppa source once
 
 ```
-flatpak install --user oppa.flatpak
+flatpak remote-add --user --if-not-exists oppa https://kapaisu.github.io/OppaClient/oppa.flatpakrepo
+```
+
+then search for Oppa in GNOME Software or KDE Discover, or run
+
+```
+flatpak install --user oppa dev.oppa.Launcher
 ```
 
 ## Build
