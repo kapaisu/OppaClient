@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod auth;
 mod browse;
 mod bundled;
@@ -11,16 +13,33 @@ mod net;
 mod places;
 mod play;
 mod prefs;
+#[cfg(windows)]
+mod runtime;
 mod skin;
+mod vault;
 mod wardrobe;
 mod window;
 
 use adw::prelude::*;
 
+#[cfg(windows)]
+fn text_setup() {
+    unsafe extern "C" {
+        fn _putenv_s(name: *const std::ffi::c_char, value: *const std::ffi::c_char) -> i32;
+    }
+    unsafe { _putenv_s(c"PANGOCAIRO_BACKEND".as_ptr(), c"fc".as_ptr()) };
+}
+
 fn main() -> gtk::glib::ExitCode {
+    #[cfg(windows)]
+    text_setup();
     let app = adw::Application::builder().application_id("dev.oppa.Launcher").build();
     app.connect_startup(|_| {
         gtk::Window::set_default_icon_name("dev.oppa.Launcher");
+        #[cfg(windows)]
+        if let Some(settings) = gtk::Settings::default() {
+            settings.set_gtk_font_name(Some("Adwaita Sans 11"));
+        }
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
         let css = gtk::CssProvider::new();
         css.load_from_string(include_str!("style.css"));

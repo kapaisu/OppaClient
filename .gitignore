@@ -14,3 +14,4 @@ flatpak/repo/
 .flatpak-builder/
 flatpak/.flatpak-builder/
 *.flatpak
+data/windows/vc_redist.x64.exe

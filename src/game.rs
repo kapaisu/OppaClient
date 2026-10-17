@@ -115,6 +115,8 @@ pub struct Arguments {
 #[serde(rename_all = "camelCase")]
 pub struct JavaVersion {
     pub major_version: u32,
+    #[serde(default)]
+    pub component: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -179,10 +181,29 @@ pub struct OsRule {
     pub arch: Option<String>,
 }
 
+#[cfg(windows)]
+const OS: &str = "windows";
+#[cfg(not(windows))]
+const OS: &str = "linux";
+#[cfg(windows)]
+const NATIVE_EXT: &str = ".dll";
+#[cfg(not(windows))]
+const NATIVE_EXT: &str = ".so";
+#[cfg(windows)]
+const SEPARATOR: &str = ";";
+#[cfg(not(windows))]
+const SEPARATOR: &str = ":";
+
+fn other_arch_natives(name: &str) -> bool {
+    let Some(rest) = name.split(&format!(":natives-{OS}")).nth(1) else { return false };
+    let wanted = if cfg!(target_arch = "aarch64") { ["-arm64", "-aarch_64"] } else { ["", ""] };
+    !rest.is_empty() && rest != wanted[0] && rest != wanted[1]
+}
+
 fn rule_matches(rule: &Rule, features: &HashSet<&str>) -> bool {
     if let Some(os) = &rule.os {
         if let Some(name) = &os.name {
-            if name != "linux" {
+            if name != OS {
                 return false;
             }
         }
@@ -335,11 +356,11 @@ fn collect_libraries(v: &VersionJson, features: &HashSet<&str>) -> Resolved {
     let mut out = Resolved { classpath: vec![], natives: vec![], fetches: vec![] };
 
     for lib in &v.libraries {
-        if !allowed(&lib.rules, features) {
+        if !allowed(&lib.rules, features) || other_arch_natives(&lib.name) {
             continue;
         }
         if let Some(natives) = &lib.natives {
-            if let Some(classifier) = natives.get("linux") {
+            if let Some(classifier) = natives.get(OS) {
                 let classifier = classifier.replace("${arch}", "64");
                 let art = lib
                     .downloads
@@ -393,7 +414,7 @@ fn collect_libraries(v: &VersionJson, features: &HashSet<&str>) -> Resolved {
         if fetch.url.is_empty() {
             continue;
         }
-        if lib.name.contains(":natives-linux") {
+        if lib.name.contains(&format!(":natives-{OS}")) {
             out.natives.push(fetch.dest.clone());
         }
         out.classpath.push(fetch.dest.clone());
@@ -466,7 +487,7 @@ fn extract_natives(jars: &[PathBuf], into: &Path) -> anyhow::Result<()> {
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i)?;
             let name = entry.name()?.to_string();
-            if entry.is_dir() || name.starts_with("META-INF") || !name.ends_with(".so") {
+            if entry.is_dir() || name.starts_with("META-INF") || !name.ends_with(NATIVE_EXT) {
                 continue;
             }
             let flat = Path::new(&name).file_name().unwrap();
@@ -488,16 +509,27 @@ pub struct Jvm {
     pub name: String,
 }
 
+#[cfg(windows)]
+fn java_roots() -> Vec<PathBuf> {
+    vec![data_dir().join("runtime")]
+}
+
+#[cfg(not(windows))]
+fn java_roots() -> Vec<PathBuf> {
+    vec![PathBuf::from("/usr/lib/jvm"), PathBuf::from("/app/jvm")]
+}
+
 pub fn installed_jvms() -> Vec<Jvm> {
+    let exe = if cfg!(windows) { "bin/javaw.exe" } else { "bin/java" };
     let mut out = Vec::new();
-    for root in ["/usr/lib/jvm", "/app/jvm"] {
+    for root in java_roots() {
         let Ok(entries) = std::fs::read_dir(root) else { continue };
         for e in entries.flatten() {
             let dir = e.path();
             if dir.is_symlink() {
                 continue;
             }
-            let java = dir.join("bin/java");
+            let java = dir.join(exe);
             if !java.exists() {
                 continue;
             }
@@ -525,6 +557,7 @@ fn name_major(name: &str) -> Option<u32> {
     name.rsplit('-').next()?.parse().ok()
 }
 
+#[cfg(not(windows))]
 fn pick_jvm(want: u32) -> anyhow::Result<PathBuf> {
     let jvms = installed_jvms();
     if let Some(j) = jvms.iter().find(|j| j.major == want) {
@@ -543,6 +576,17 @@ fn pick_jvm(want: u32) -> anyhow::Result<PathBuf> {
         n => format!("jre{n}-openjdk"),
     };
     bail!("This version needs Java {want}.\nsudo pacman -S {pkg}")
+}
+
+#[cfg(windows)]
+async fn system_java(v: &VersionJson, _want: u32, job: &Job) -> anyhow::Result<PathBuf> {
+    let component = v.java_version.as_ref().and_then(|j| j.component.clone()).unwrap_or_else(|| "jre-legacy".into());
+    crate::runtime::ensure(&component, job).await
+}
+
+#[cfg(not(windows))]
+async fn system_java(_v: &VersionJson, want: u32, _job: &Job) -> anyhow::Result<PathBuf> {
+    pick_jvm(want)
 }
 
 pub struct Account<'a> {
@@ -583,9 +627,10 @@ pub async fn prepare(inst: &Instance, who: Account<'_>, job: &Job) -> anyhow::Re
     let nd = natives_dir.clone();
     tokio::task::spawn_blocking(move || extract_natives(&jars, &nd)).await??;
 
+    let want = v.java_version.as_ref().map(|j| j.major_version).unwrap_or(8);
     let java = match &inst.java {
         Some(p) if p.exists() => p.clone(),
-        _ => pick_jvm(v.java_version.as_ref().map(|j| j.major_version).unwrap_or(8))?,
+        _ => system_java(&v, want, job).await?,
     };
 
     let classpath = libs
@@ -593,7 +638,7 @@ pub async fn prepare(inst: &Instance, who: Account<'_>, job: &Job) -> anyhow::Re
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect::<Vec<_>>()
-        .join(":");
+        .join(SEPARATOR);
     let assets_root = data_dir().join("assets");
     let asset_id = v.asset_index.as_ref().map(|a| a.id.clone()).or(v.assets.clone()).unwrap_or_default();
     let vars: HashMap<&str, String> = HashMap::from([
@@ -615,7 +660,7 @@ pub async fn prepare(inst: &Instance, who: Account<'_>, job: &Job) -> anyhow::Re
         ("launcher_name", "oppa".to_string()),
         ("launcher_version", env!("CARGO_PKG_VERSION").to_string()),
         ("classpath", classpath),
-        ("classpath_separator", ":".to_string()),
+        ("classpath_separator", SEPARATOR.to_string()),
         ("library_directory", data_dir().join("libraries").to_string_lossy().into_owned()),
     ]);
     let fill = |s: &str| {
@@ -677,6 +722,8 @@ pub async fn prepare(inst: &Instance, who: Account<'_>, job: &Job) -> anyhow::Re
     let main_class = v.main_class.clone().context("version has no main class")?;
     let mut cmd = tokio::process::Command::new(java);
     cmd.args(&jvm_args).arg(main_class).args(&game_args).current_dir(&game_dir);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
     Ok(cmd)
 }
 

@@ -17,7 +17,7 @@ optdepends=(
 
 build() {
   cd "$startdir/mod"
-  ./gradlew bundle --no-daemon --console=plain
+  ./gradlew bundle --no-daemon --console=plain -Dorg.gradle.java.home=/usr/lib/jvm/java-25-openjdk
   cd "$startdir"
   cargo build --release --locked
 }

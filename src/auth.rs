@@ -329,10 +329,6 @@ fn roster_path() -> PathBuf {
     data_dir().join("accounts.json")
 }
 
-fn fallback_path() -> PathBuf {
-    data_dir().join("tokens.json")
-}
-
 pub fn roster() -> Roster {
     std::fs::read(roster_path())
         .ok()
@@ -346,29 +342,9 @@ pub fn save_roster(r: &Roster) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn attrs(uuid: &str) -> [(&'static str, String); 2] {
-    [("application", "dev.oppa.Launcher".to_string()), ("uuid", uuid.to_string())]
-}
-
-async fn keyring() -> anyhow::Result<oo7::Keyring> {
-    let k = oo7::Keyring::new().await?;
-    k.unlock().await?;
-    Ok(k)
-}
-
 pub async fn store(acc: &Account) -> anyhow::Result<()> {
     let blob = serde_json::to_string(acc)?;
-    let saved = async {
-        let k = keyring().await?;
-        k.create_item(&format!("Minecraft ({})", acc.name), &attrs(&acc.uuid), blob.as_str(), true)
-            .await?;
-        anyhow::Ok(())
-    }
-    .await;
-    if let Err(e) = saved {
-        eprintln!("keyring unavailable ({e}), storing tokens in {}", fallback_path().display());
-        store_file(acc)?;
-    }
+    crate::vault::put(&acc.uuid, &format!("Minecraft ({})", acc.name), &blob).await?;
 
     let mut r = roster();
     match r.accounts.iter_mut().find(|e| e.uuid == acc.uuid) {
@@ -381,48 +357,13 @@ pub async fn store(acc: &Account) -> anyhow::Result<()> {
     save_roster(&r)
 }
 
-fn store_file(acc: &Account) -> anyhow::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut all: HashMap<String, Account> = std::fs::read(fallback_path())
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
-    all.insert(acc.uuid.clone(), acc.clone());
-    std::fs::create_dir_all(data_dir())?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(fallback_path())?;
-    std::io::Write::write_all(&mut f, &serde_json::to_vec(&all)?)?;
-    Ok(())
-}
-
 pub async fn load(uuid: &str) -> anyhow::Result<Account> {
-    if let Ok(k) = keyring().await {
-        if let Some(item) = k.search_items(&attrs(uuid)).await?.into_iter().next() {
-            let secret = item.secret().await?;
-            return Ok(serde_json::from_slice(secret.as_bytes())?);
-        }
-    }
-    let all: HashMap<String, Account> = serde_json::from_slice(
-        &std::fs::read(fallback_path()).context("no stored tokens for this account")?,
-    )?;
-    all.get(uuid).cloned().context("no stored tokens for this account")
+    let blob = crate::vault::get(uuid).await?.context("no stored tokens for this account")?;
+    Ok(serde_json::from_str(&blob)?)
 }
 
 pub async fn forget(uuid: &str) -> anyhow::Result<()> {
-    if let Ok(k) = keyring().await {
-        k.delete(&attrs(uuid)).await?;
-    }
-    if let Ok(b) = std::fs::read(fallback_path()) {
-        if let Ok(mut all) = serde_json::from_slice::<HashMap<String, Account>>(&b) {
-            if all.remove(uuid).is_some() {
-                std::fs::write(fallback_path(), serde_json::to_vec(&all)?)?;
-            }
-        }
-    }
+    crate::vault::remove(uuid).await?;
     let mut r = roster();
     r.accounts.retain(|e| e.uuid != uuid);
     if r.active.as_deref() == Some(uuid) {

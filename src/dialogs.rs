@@ -5,6 +5,7 @@ use adw::prelude::*;
 use gtk::{gio, glib};
 
 use crate::auth;
+#[cfg(target_os = "linux")]
 use webkit6::prelude::*;
 use crate::game;
 use crate::instance::{Instance, Loader};
@@ -191,6 +192,7 @@ async fn complete<F>(
     }
 }
 
+#[cfg(target_os = "linux")]
 fn login_window(parent: &adw::ApplicationWindow, done: async_channel::Sender<Result<String, String>>) {
     let session = webkit6::NetworkSession::new_ephemeral();
     let view = webkit6::WebView::builder().network_session(&session).vexpand(true).build();
@@ -222,6 +224,52 @@ fn login_window(parent: &adw::ApplicationWindow, done: async_channel::Sender<Res
     ));
     view.load_uri(&auth::authorize_url());
     window.present();
+}
+
+#[cfg(windows)]
+fn login_window(_parent: &adw::ApplicationWindow, done: async_channel::Sender<Result<String, String>>) {
+    std::thread::spawn(move || {
+        if let Err(e) = webview_login(&done) {
+            let _ = done.send_blocking(Err(format!("Couldn't open the sign-in window: {e}")));
+        }
+    });
+}
+
+#[cfg(windows)]
+fn webview_login(done: &async_channel::Sender<Result<String, String>>) -> anyhow::Result<()> {
+    use tao::dpi::LogicalSize;
+    use tao::event::{Event, WindowEvent};
+    use tao::event_loop::{ControlFlow, EventLoopBuilder};
+    use tao::platform::run_return::EventLoopExtRunReturn;
+    use tao::platform::windows::EventLoopBuilderExtWindows;
+    use tao::window::WindowBuilder;
+
+    let mut event_loop = EventLoopBuilder::<()>::with_user_event().with_any_thread(true).build();
+    let window = WindowBuilder::new()
+        .with_title("Microsoft")
+        .with_inner_size(LogicalSize::new(500.0, 680.0))
+        .build(&event_loop)?;
+    let proxy = event_loop.create_proxy();
+    let tx = done.clone();
+    let _webview = wry::WebViewBuilder::new()
+        .with_url(auth::authorize_url())
+        .with_incognito(true)
+        .with_navigation_handler(move |uri| match auth::redirect_result(&uri) {
+            Ok(None) => true,
+            result => {
+                let _ = tx.send_blocking(result.map(|c| c.unwrap_or_default()));
+                let _ = proxy.send_event(());
+                false
+            }
+        })
+        .build(&window)?;
+    event_loop.run_return(|event, _, flow| {
+        *flow = ControlFlow::Wait;
+        if let Event::UserEvent(()) | Event::WindowEvent { event: WindowEvent::CloseRequested, .. } = event {
+            *flow = ControlFlow::Exit;
+        }
+    });
+    Ok(())
 }
 
 pub fn new_instance(app: &Rc<App>) {

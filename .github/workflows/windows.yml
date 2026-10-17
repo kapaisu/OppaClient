@@ -1,0 +1,64 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release to attach the installer to
+        required: true
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      GTK_RELEASE: "2026.8.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: GTK
+        shell: pwsh
+        run: |
+          gh release download $env:GTK_RELEASE --repo wingtk/gvsbuild --pattern "GTK4_Gvsbuild_*_x64.zip" --output gtk.zip
+          Expand-Archive gtk.zip C:\gtk
+          "C:\gtk\bin" | Out-File -Append $env:GITHUB_PATH
+          "PKG_CONFIG_PATH=C:\gtk\lib\pkgconfig" | Out-File -Append $env:GITHUB_ENV
+          "LIB=C:\gtk\lib;$env:LIB" | Out-File -Append $env:GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Mod
+        working-directory: mod
+        run: ./gradlew.bat bundle --no-daemon --console=plain
+
+      - name: Launcher
+        run: cargo build --release --locked
+
+      - name: Package
+        shell: pwsh
+        run: |
+          ./data/windows/package.ps1
+          Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile data/windows/vc_redist.x64.exe
+          choco install innosetup -y --no-progress
+          $env:OPPA_VERSION = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" data\windows\oppa.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Oppa-Setup
+          path: dist/Oppa-Setup.exe
+
+      - name: Attach to release
+        shell: pwsh
+        run: gh release upload "${{ github.event.release.tag_name || inputs.tag }}" dist/Oppa-Setup.exe --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

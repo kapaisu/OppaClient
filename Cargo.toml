@@ -13,14 +13,12 @@ futures-util = "0.3.34"
 gtk = { version = "0.11.5", package = "gtk4", features = ["v4_20"] }
 hex = "0.4.3"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
-oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
 open = "5.4.4"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "stream", "http2", "form", "query", "multipart"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha1 = "0.11.0"
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "fs", "process", "io-util", "sync", "time", "macros"] }
-webkit6 = "0.6.1"
 zip = "9.0.4"
 
 [profile.release]
@@ -29,3 +27,15 @@ strip = true
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[target.'cfg(target_os = "linux")'.dependencies]
+oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
+webkit6 = "0.6.1"
+
+[target."cfg(windows)".dependencies]
+tao = "0.37.1"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+wry = "0.57.0"
+
+[build-dependencies]
+embed-resource = "3.0.12"
