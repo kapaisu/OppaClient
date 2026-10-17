@@ -1,0 +1,82 @@
+package dev.oppaclient.platform;
+
+import net.minecraft.client.gui.Click;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.input.CharInput;
+import net.minecraft.client.input.KeyInput;
+import net.minecraft.text.Text;
+
+public abstract class BaseScreen extends Screen {
+	protected BaseScreen(Text title) {
+		super(title);
+	}
+
+	protected abstract void draw(Gfx g, int mouseX, int mouseY);
+
+	protected void drawBackground(Gfx g) {}
+
+	protected boolean pressed(double x, double y, int button) {
+		return false;
+	}
+
+	protected boolean released(double x, double y, int button) {
+		return false;
+	}
+
+	protected boolean dragged(double x, double y, int button) {
+		return false;
+	}
+
+	protected boolean scrolled(double x, double y, double amount) {
+		return false;
+	}
+
+	protected boolean key(int key, int scancode, int modifiers) {
+		return false;
+	}
+
+	protected boolean typed(int codepoint) {
+		return false;
+	}
+
+	@Override
+	public final void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+		draw(new GfxImpl(ctx), mouseX, mouseY);
+	}
+
+	@Override
+	public final void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+		drawBackground(new GfxImpl(ctx));
+	}
+
+	@Override
+	public final boolean mouseClicked(Click click, boolean doubled) {
+		return pressed(click.x(), click.y(), click.button());
+	}
+
+	@Override
+	public final boolean mouseReleased(Click click) {
+		return released(click.x(), click.y(), click.button());
+	}
+
+	@Override
+	public final boolean mouseDragged(Click click, double dx, double dy) {
+		return dragged(click.x(), click.y(), click.button());
+	}
+
+	@Override
+	public final boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+		return scrolled(x, y, vertical);
+	}
+
+	@Override
+	public final boolean keyPressed(KeyInput input) {
+		return key(input.key(), input.scancode(), input.modifiers()) || super.keyPressed(input);
+	}
+
+	@Override
+	public final boolean charTyped(CharInput input) {
+		return typed(input.codepoint()) || super.charTyped(input);
+	}
+}

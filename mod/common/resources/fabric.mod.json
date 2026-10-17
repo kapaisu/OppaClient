@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "oppaclient",
+  "version": "${version}",
+  "name": "Oppa",
+  "description": "HUD, menu and visuals for the Oppa launcher.",
+  "authors": [
+    "kapaisu (q3c on Discord)"
+  ],
+  "license": "MIT",
+  "icon": "assets/oppaclient/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.oppaclient.OppaClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "${minecraft}",
+    "fabric-api": "*"
+  },
+  "mixins": [
+    "oppaclient.mixins.json"
+  ],
+  "contact": {
+    "discord": "q3c"
+  }
+}

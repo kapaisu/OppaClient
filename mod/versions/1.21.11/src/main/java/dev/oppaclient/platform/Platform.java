@@ -1,0 +1,90 @@
+package dev.oppaclient.platform;
+
+import dev.oppaclient.OppaClient;
+import dev.oppaclient.hud.Crosshair;
+import dev.oppaclient.hud.Hud;
+import dev.oppaclient.overlay.IrisCompat;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.minecraft.SharedConstants;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.entity.Entity;
+import net.minecraft.text.Style;
+import net.minecraft.text.StyleSpriteSource;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.Vec3d;
+
+public final class Platform {
+	private static final KeyBinding.Category CATEGORY = KeyBinding.Category.create(OppaClient.id("oppa"));
+
+	private Platform() {}
+
+	public static void init() {
+		NeonPipelines.bootstrap();
+		IrisCompat.init((Object[]) NeonPipelines.world());
+
+		WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, outline) -> !OppaClient.OUTLINE.hidesVanillaOutline());
+		WorldRenderEvents.END_MAIN.register(context -> {
+			if (context.consumers() == null) return;
+			OppaClient.OUTLINE.render(new Quads(context.consumers(), context.worldState().cameraRenderState.pos,
+					context.matrices().peek().getPositionMatrix()));
+		});
+
+		HudElementRegistry.addLast(OppaClient.id("hud"), (ctx, tick) -> Hud.render(new GfxImpl(ctx)));
+		HudElementRegistry.replaceElement(VanillaHudElements.STATUS_EFFECTS, vanilla -> (ctx, tick) -> {
+			if (!Hud.drawsEffects()) vanilla.render(ctx, tick);
+		});
+		HudElementRegistry.replaceElement(VanillaHudElements.CROSSHAIR, vanilla -> (ctx, tick) -> {
+			MinecraftClient mc = MinecraftClient.getInstance();
+			if (Hud.drawsCrosshair(mc)) Crosshair.draw(new GfxImpl(ctx), mc);
+			else vanilla.render(ctx, tick);
+		});
+	}
+
+	public static float guiScale() {
+		return MinecraftClient.getInstance().getWindow().getScaleFactor();
+	}
+
+	public static Style font(Identifier id) {
+		return Style.EMPTY.withFont(new StyleSpriteSource.Font(id));
+	}
+
+	public static void upload(Identifier id, int w, int h, int[] argb) {
+		NativeImage img = new NativeImage(w, h, true);
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				img.setColorArgb(x, y, argb[y * w + x]);
+			}
+		}
+		MinecraftClient.getInstance().getTextureManager().registerTexture(id, new NativeImageBackedTexture(id::toString, img));
+	}
+
+	public static KeyBinding key(String name, int code) {
+		return new KeyBinding(name, InputUtil.Type.KEYSYM, code, CATEGORY);
+	}
+
+	public static boolean matches(KeyBinding binding, int key, int scancode) {
+		return binding.matchesKey(new net.minecraft.client.input.KeyInput(key, scancode, 0));
+	}
+
+	public static void bind(KeyBinding binding, int key, int scancode) {
+		binding.setBoundKey(InputUtil.fromKeyCode(new net.minecraft.client.input.KeyInput(key, scancode, 0)));
+	}
+
+	public static String gameVersion() {
+		return SharedConstants.getGameVersion().name();
+	}
+
+	public static float tickProgress() {
+		return MinecraftClient.getInstance().getRenderTickCounter().getTickProgress(true);
+	}
+
+	public static Vec3d entityPos(Entity entity) {
+		return entity.getEntityPos();
+	}
+}

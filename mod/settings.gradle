@@ -1,0 +1,17 @@
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'oppaclient'
+
+['1.21.1', '1.21.4', '1.21.10', '1.21.11'].each { v ->
+	include v
+	project(":$v").projectDir = file("versions/$v")
+}

@@ -1,0 +1,31 @@
+[package]
+name = "oppa"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+adw = { version = "0.9.2", package = "libadwaita", features = ["v1_8"] }
+anyhow = "1.0.104"
+async-channel = "2.5.0"
+bytes = "1.12.1"
+dirs = "7.0.0"
+futures-util = "0.3.34"
+gtk = { version = "0.11.5", package = "gtk4", features = ["v4_20"] }
+hex = "0.4.3"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
+open = "5.4.4"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "stream", "http2", "form", "query", "multipart"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha1 = "0.11.0"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "fs", "process", "io-util", "sync", "time", "macros"] }
+webkit6 = "0.6.1"
+zip = "9.0.4"
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2

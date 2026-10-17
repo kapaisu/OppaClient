@@ -1,0 +1,52 @@
+plugins {
+	id 'fabric-loom' version '1.18.2' apply false
+}
+
+subprojects {
+	apply plugin: 'fabric-loom'
+
+	version = "${rootProject.mod_version}+${project.minecraft_version}"
+	group = rootProject.maven_group
+
+	base {
+		archivesName = rootProject.archives_base_name
+	}
+
+	sourceSets {
+		main {
+			java.srcDirs += rootProject.file('common/java')
+			resources.srcDirs += rootProject.file('common/resources')
+		}
+	}
+
+	dependencies {
+		minecraft "com.mojang:minecraft:${project.minecraft_version}"
+		mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+		modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+		modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	}
+
+	processResources {
+		def props = [version: rootProject.mod_version, minecraft: project.minecraft_range]
+		inputs.properties props
+		filesMatching("fabric.mod.json") {
+			expand props
+		}
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		it.options.release = 21
+	}
+
+	java {
+		sourceCompatibility = JavaVersion.VERSION_21
+		targetCompatibility = JavaVersion.VERSION_21
+	}
+
+	tasks.register('bundle', Copy) {
+		dependsOn remapJar
+		from remapJar.archiveFile
+		into rootProject.file('../data/mods')
+		rename { "oppaclient-${project.minecraft_version}.jar" }
+	}
+}

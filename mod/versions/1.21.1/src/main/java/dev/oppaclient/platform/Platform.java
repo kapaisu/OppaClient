@@ -1,0 +1,77 @@
+package dev.oppaclient.platform;
+
+import dev.oppaclient.OppaClient;
+import dev.oppaclient.hud.Hud;
+import dev.oppaclient.overlay.IrisCompat;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.minecraft.SharedConstants;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.entity.Entity;
+import net.minecraft.text.Style;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
+
+public final class Platform {
+	private static final String CATEGORY = "key.category.oppaclient.oppa";
+
+	private Platform() {}
+
+	public static void init() {
+		IrisCompat.init();
+		WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, hit) -> !OppaClient.OUTLINE.hidesVanillaOutline());
+		WorldRenderEvents.LAST.register(context -> {
+			if (context.consumers() == null) return;
+			OppaClient.OUTLINE.render(new Quads(context.consumers(), context.camera().getPos(), new Matrix4f(context.positionMatrix())));
+		});
+		HudRenderCallback.EVENT.register((ctx, tick) -> Hud.render(new GfxImpl(ctx)));
+	}
+
+	public static float guiScale() {
+		return (float) MinecraftClient.getInstance().getWindow().getScaleFactor();
+	}
+
+	public static Style font(Identifier id) {
+		return Style.EMPTY.withFont(id);
+	}
+
+	public static void upload(Identifier id, int w, int h, int[] argb) {
+		NativeImage img = new NativeImage(w, h, true);
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				int c = argb[y * w + x];
+				img.setColor(x, y, (c & 0xFF00FF00) | (c & 0xFF) << 16 | (c >> 16) & 0xFF);
+			}
+		}
+		MinecraftClient.getInstance().getTextureManager().registerTexture(id, new NativeImageBackedTexture(img));
+	}
+
+	public static KeyBinding key(String name, int code) {
+		return new KeyBinding(name, InputUtil.Type.KEYSYM, code, CATEGORY);
+	}
+
+	public static boolean matches(KeyBinding binding, int key, int scancode) {
+		return binding.matchesKey(key, scancode);
+	}
+
+	public static void bind(KeyBinding binding, int key, int scancode) {
+		binding.setBoundKey(InputUtil.fromKeyCode(key, scancode));
+	}
+
+	public static String gameVersion() {
+		return SharedConstants.getGameVersion().getName();
+	}
+
+	public static float tickProgress() {
+		return MinecraftClient.getInstance().getRenderTickCounter().getTickDelta(true);
+	}
+
+	public static Vec3d entityPos(Entity entity) {
+		return entity.getPos();
+	}
+}

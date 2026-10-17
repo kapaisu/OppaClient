@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Oppa
+Comment=Minecraft launcher
+Exec=oppa
+Icon=dev.oppa.Launcher
+Terminal=false
+Type=Application
+Categories=Game;
+Keywords=minecraft;launcher;mods;
+StartupWMClass=dev.oppa.Launcher

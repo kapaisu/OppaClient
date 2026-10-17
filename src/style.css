@@ -1,0 +1,230 @@
+:root {
+  --accent-bg-color: var(--window-fg-color);
+  --accent-fg-color: var(--window-bg-color);
+  --accent-color: var(--window-fg-color);
+}
+
+window.background {
+  background: black;
+}
+
+.dim-layer {
+  background: black;
+}
+
+.section {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.5;
+  margin-top: 14px;
+}
+
+picture.thumb {
+  border-radius: 6px;
+}
+
+flowboxchild.tile {
+  border-radius: 12px;
+  transition: background 120ms ease-out;
+}
+
+flowboxchild.tile:hover {
+  background: alpha(currentColor, 0.05);
+}
+
+flowboxchild.tile.chosen {
+  background: alpha(currentColor, 0.12);
+}
+
+flowboxchild.tile:hover .trash {
+  opacity: 0.7;
+}
+
+toolbarview > .top-bar,
+toolbarview > .top-bar headerbar,
+toolbarview > .bottom-bar {
+  background: none;
+  box-shadow: none;
+}
+
+.hero {
+  font-size: 104px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  font-feature-settings: "tnum", "ss01";
+  margin-left: -4px;
+}
+
+.instance-label {
+  font-size: 15px;
+  font-weight: 600;
+  opacity: 0.55;
+  margin-bottom: -6px;
+}
+
+.loader-line {
+  font-size: 15px;
+  opacity: 0.55;
+}
+
+.question {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+button.play {
+  min-width: 0;
+  min-height: 0;
+  padding: 11px 44px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.fact {
+  font-feature-settings: "tnum";
+  opacity: 0.55;
+}
+
+.fact:first-child {
+  opacity: 0.85;
+}
+
+textview.log,
+textview.log text {
+  background: none;
+  font-size: 11.5px;
+  color: alpha(currentColor, 0.62);
+}
+
+.results {
+  background: none;
+}
+
+.results > row {
+  border-radius: 12px;
+  transition: background 120ms ease-out;
+}
+
+.results > row:hover {
+  background: alpha(currentColor, 0.045);
+}
+
+.project-icon {
+  border-radius: 11px;
+  background: alpha(currentColor, 0.06);
+}
+
+.project-icon.small {
+  border-radius: 8px;
+}
+
+.file-icon {
+  border-radius: 8px;
+  background: alpha(currentColor, 0.06);
+}
+
+.project-title {
+  font-weight: 700;
+}
+
+.project-desc {
+  opacity: 0.75;
+}
+
+button.install {
+  min-width: 96px;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+}
+
+button.install.done:disabled {
+  background: none;
+  opacity: 0.55;
+}
+
+.trash {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+row:hover .trash,
+.trash:focus-visible {
+  opacity: 0.7;
+}
+
+button.place {
+  padding: 14px 16px;
+  border-radius: 14px;
+}
+
+.place-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+button.place .dim-label,
+button.path {
+  font-weight: normal;
+}
+
+.place-key {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.3;
+  margin-top: 4px;
+}
+
+button.path {
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+.folder-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.dropzone:drop(active) {
+  background: alpha(currentColor, 0.035);
+}
+
+.shot {
+  border-radius: 10px;
+  background: alpha(currentColor, 0.06);
+}
+
+flowboxchild {
+  padding: 0;
+  border-radius: 10px;
+}
+
+.code {
+  font-family: monospace;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin: 6px 0 8px 0;
+}
+
+.activity {
+  padding: 8px 14px 0 14px;
+  font-size: 13px;
+}
+
+.activity progressbar {
+  margin: 8px -14px 0 -14px;
+}
+
+.activity progressbar trough,
+.activity progressbar progress {
+  min-height: 2px;
+  border-radius: 0;
+}
+
+.model-row {
+  font-weight: normal;
+  padding: 6px 10px;
+}

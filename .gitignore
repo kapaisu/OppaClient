@@ -1,0 +1,10 @@
+target/
+pkg/
+*.pkg.tar.zst
+data/mods/
+mod/.gradle/
+mod/build/
+mod/versions/*/build/
+mod/versions/*/run/
+mod/versions/*/.gradle/
+mod/run/
