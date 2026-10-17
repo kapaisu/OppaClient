@@ -490,35 +490,39 @@ pub struct Jvm {
 
 pub fn installed_jvms() -> Vec<Jvm> {
     let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir("/usr/lib/jvm") else { return out };
-    for e in entries.flatten() {
-        let dir = e.path();
-        if dir.is_symlink() {
-            continue;
-        }
-        let java = dir.join("bin/java");
-        if !java.exists() {
-            continue;
-        }
-        let Ok(release) = std::fs::read_to_string(dir.join("release")) else { continue };
-        let Some(ver) = release
-            .lines()
-            .find_map(|l| l.strip_prefix("JAVA_VERSION="))
-            .map(|v| v.trim_matches('"').to_string())
-        else {
-            continue;
-        };
-        let major = match ver.strip_prefix("1.") {
-            Some(rest) => rest.split('.').next(),
-            None => ver.split(['.', '-', '+']).next(),
-        }
-        .and_then(|m| m.parse().ok());
-        if let Some(major) = major {
-            out.push(Jvm { major, path: java, name: e.file_name().to_string_lossy().into_owned() });
+    for root in ["/usr/lib/jvm", "/app/jvm"] {
+        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        for e in entries.flatten() {
+            let dir = e.path();
+            if dir.is_symlink() {
+                continue;
+            }
+            let java = dir.join("bin/java");
+            if !java.exists() {
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().into_owned();
+            if let Some(major) = release_major(&dir).or_else(|| name_major(&name)) {
+                out.push(Jvm { major, path: java, name });
+            }
         }
     }
     out.sort_by_key(|j| j.major);
     out
+}
+
+fn release_major(dir: &Path) -> Option<u32> {
+    let release = std::fs::read_to_string(dir.join("release")).ok()?;
+    let ver = release.lines().find_map(|l| l.strip_prefix("JAVA_VERSION="))?.trim_matches('"').to_string();
+    match ver.strip_prefix("1.") {
+        Some(rest) => rest.split('.').next(),
+        None => ver.split(['.', '-', '+']).next(),
+    }
+    .and_then(|m| m.parse().ok())
+}
+
+fn name_major(name: &str) -> Option<u32> {
+    name.rsplit('-').next()?.parse().ok()
 }
 
 fn pick_jvm(want: u32) -> anyhow::Result<PathBuf> {
@@ -530,6 +534,9 @@ fn pick_jvm(want: u32) -> anyhow::Result<PathBuf> {
         if let Some(j) = jvms.iter().find(|j| j.major > want) {
             return Ok(j.path.clone());
         }
+    }
+    if Path::new("/.flatpak-info").exists() {
+        bail!("This version needs Java {want}, which this build doesn't include.");
     }
     let pkg = match want {
         16 => "jre17-openjdk".to_string(),

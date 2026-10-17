@@ -8,3 +8,9 @@ mod/versions/*/build/
 mod/versions/*/run/
 mod/versions/*/.gradle/
 mod/run/
+dist/
+flatpak/build/
+flatpak/repo/
+.flatpak-builder/
+flatpak/.flatpak-builder/
+*.flatpak

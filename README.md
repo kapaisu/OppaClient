@@ -19,6 +19,28 @@ Fabric 1.21.1, 1.21.4, 1.21.10 and 1.21.11. The launcher installs it into matchi
 - Block overlay, zoom, free look and a custom crosshair
 - Right Shift opens the menu
 
+## Install
+
+Arch Linux: add this to `/etc/pacman.conf`
+
+```
+[oppa]
+SigLevel = Optional TrustAll
+Server = https://github.com/kapaisu/OppaClient/releases/download/repo
+```
+
+then
+
+```
+sudo pacman -Sy oppa
+```
+
+Flatpak: download `oppa.flatpak` from the latest release, then
+
+```
+flatpak install --user oppa.flatpak
+```
+
 ## Build
 
 Needs `rust`, `jdk25-openjdk`, `gtk4`, `libadwaita` and `webkitgtk-6.0`.

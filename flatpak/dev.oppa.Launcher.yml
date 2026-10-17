@@ -1,0 +1,49 @@
+id: dev.oppa.Launcher
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.openjdk8
+  - org.freedesktop.Sdk.Extension.openjdk17
+  - org.freedesktop.Sdk.Extension.openjdk21
+  - org.freedesktop.Sdk.Extension.openjdk25
+command: oppa
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+modules:
+  - name: java
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/jvm
+      - for v in 8 17 21 25; do /usr/lib/sdk/openjdk$v/install.sh && mv /app/jre /app/jvm/java-$v; done
+  - name: oppa
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
+      env:
+        CARGO_HOME: /run/build/oppa/cargo
+    build-commands:
+      - cargo build --release --locked
+      - install -Dm755 target/release/oppa /app/bin/oppa
+      - install -Dm644 data/dev.oppa.Launcher.desktop /app/share/applications/dev.oppa.Launcher.desktop
+      - for s in 32 48 64 128 256 512; do install -Dm644 data/icon-$s.png /app/share/icons/hicolor/${s}x${s}/apps/dev.oppa.Launcher.png; done
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - target
+          - pkg
+          - .git
+          - .flatpak-builder
+          - flatpak/build
+          - flatpak/repo
+          - mod/.gradle
+          - mod/build
