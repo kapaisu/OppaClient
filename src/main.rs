@@ -4,6 +4,7 @@ mod auth;
 mod browse;
 mod bundled;
 mod dialogs;
+mod discord;
 mod game;
 mod images;
 mod instance;

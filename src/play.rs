@@ -636,11 +636,15 @@ async fn run(
     let (done, done_rx) = tokio::sync::watch::channel(false);
     tokio::spawn(crate::site::presence(acc.name, acc.uuid, acc.mc_token, done_rx));
 
+    crate::discord::set(crate::discord::Status::Menu { game: inst.game_version.clone() });
     if let Some(out) = child.stdout.take() {
         let tx = lines.clone();
         tokio::spawn(async move {
             let mut r = tokio::io::BufReader::new(out).lines();
             while let Ok(Some(l)) = r.next_line().await {
+                if let Some(status) = crate::discord::from_log(&l) {
+                    crate::discord::set(status);
+                }
                 let _ = tx.send(l).await;
             }
         });
@@ -663,6 +667,7 @@ async fn run(
         }
     };
     let _ = done.send(true);
+    crate::discord::set(crate::discord::Status::Launcher);
     let secs = (now() - start).max(0) as u64;
     let code = exit.ok().and_then(|s| s.code());
     let _ = status.send(Status::Exited { code, start, secs }).await;

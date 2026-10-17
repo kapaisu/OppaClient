@@ -16,6 +16,8 @@ finish-args:
   - --socket=x11
   - --socket=pulseaudio
   - --device=dri
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
 modules:
   - name: java
     buildsystem: simple

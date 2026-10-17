@@ -47,8 +47,19 @@ pub fn open(app: &Rc<App>) {
     let group = adw::PreferencesGroup::builder().title("Background").build();
     group.add(&image);
     group.add(&dim);
+    let discord = adw::SwitchRow::builder().title("Show what you're playing in Discord").active(s.discord.unwrap_or(true)).build();
+    discord.connect_active_notify(|row| {
+        let mut s = window::settings();
+        s.discord = Some(row.is_active());
+        window::save_settings(&s);
+        crate::discord::enable(row.is_active());
+    });
+    let social = adw::PreferencesGroup::builder().title("Discord").build();
+    social.add(&discord);
+
     let page = adw::PreferencesPage::new();
     page.add(&group);
+    page.add(&social);
     let dialog = adw::PreferencesDialog::builder().title("Preferences").build();
     dialog.add(&page);
 

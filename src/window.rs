@@ -33,6 +33,8 @@ pub struct Settings {
     pub background: Option<String>,
     #[serde(default)]
     pub dim: Option<f64>,
+    #[serde(default)]
+    pub discord: Option<bool>,
 }
 
 pub const DEFAULT_DIM: f64 = 0.80;
@@ -215,6 +217,8 @@ pub fn build(application: &adw::Application) {
     };
     app.select(start);
     restore_account(&app);
+    crate::discord::enable(settings().discord.unwrap_or(true));
+    crate::discord::set(crate::discord::Status::Launcher);
     window.present();
 }
 
