@@ -49,3 +49,5 @@ modules:
           - flatpak/repo
           - mod/.gradle
           - mod/build
+          - web
+          - private
