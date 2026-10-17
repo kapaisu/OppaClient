@@ -13,7 +13,6 @@ mod net;
 mod places;
 mod play;
 mod prefs;
-#[cfg(windows)]
 mod runtime;
 mod skin;
 mod vault;

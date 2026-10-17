@@ -516,7 +516,7 @@ fn java_roots() -> Vec<PathBuf> {
 
 #[cfg(not(windows))]
 fn java_roots() -> Vec<PathBuf> {
-    vec![PathBuf::from("/usr/lib/jvm"), PathBuf::from("/app/jvm")]
+    vec![PathBuf::from("/usr/lib/jvm"), PathBuf::from("/app/jvm"), data_dir().join("runtime")]
 }
 
 pub fn installed_jvms() -> Vec<Jvm> {
@@ -578,15 +578,18 @@ fn pick_jvm(want: u32) -> anyhow::Result<PathBuf> {
     bail!("This version needs Java {want}.\nsudo pacman -S {pkg}")
 }
 
-#[cfg(windows)]
-async fn system_java(v: &VersionJson, _want: u32, job: &Job) -> anyhow::Result<PathBuf> {
+async fn system_java(v: &VersionJson, want: u32, job: &Job) -> anyhow::Result<PathBuf> {
+    if let Some(j) = installed_jvms().into_iter().find(|j| j.major == want) {
+        return Ok(j.path);
+    }
     let component = v.java_version.as_ref().and_then(|j| j.component.clone()).unwrap_or_else(|| "jre-legacy".into());
-    crate::runtime::ensure(&component, job).await
-}
-
-#[cfg(not(windows))]
-async fn system_java(_v: &VersionJson, want: u32, _job: &Job) -> anyhow::Result<PathBuf> {
-    pick_jvm(want)
+    match crate::runtime::ensure(&component, job).await {
+        Ok(path) => Ok(path),
+        #[cfg(not(windows))]
+        Err(e) => pick_jvm(want).map_err(|fallback| anyhow::anyhow!("{fallback}\nCouldn't download Java {want} either: {e}")),
+        #[cfg(windows)]
+        Err(e) => Err(e),
+    }
 }
 
 pub struct Account<'a> {
