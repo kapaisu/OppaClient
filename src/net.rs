@@ -140,7 +140,9 @@ async fn fetch_one(f: &Fetch) -> anyhow::Result<()> {
     if let Some(dir) = f.dest.parent() {
         tokio::fs::create_dir_all(dir).await?;
     }
-    let part = f.dest.with_extension("part");
+    let mut part = f.dest.clone().into_os_string();
+    part.push(".part");
+    let part = PathBuf::from(part);
     let mut last_err = None;
     for attempt in 0..3 {
         if attempt > 0 {
