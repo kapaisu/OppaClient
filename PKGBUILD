@@ -1,5 +1,5 @@
 pkgname=oppa
-pkgver=0.2.1
+pkgver=0.2.2
 pkgrel=1
 pkgdesc='Minecraft launcher'
 arch=(x86_64 aarch64)
