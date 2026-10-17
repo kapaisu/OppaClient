@@ -707,7 +707,7 @@ public final class MenuScreen extends BaseScreen {
 	@Override
 	protected boolean pressed(double cx, double cy, int button) {
 		if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT && button != GLFW.GLFW_MOUSE_BUTTON_RIGHT) return false;
-		Press press = new Press(cx, cy, button);
+		Press press = new Press(cx, cy, button == GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 		for (Hit h : List.copyOf(hits)) {
 			if (h.scrolls && (cy < TOP || cy > height - 16)) continue;
 			if (press.secondary() && !h.secondary) continue;

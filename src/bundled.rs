@@ -10,6 +10,9 @@ fn jar_for(game: &str) -> Option<&'static [u8]> {
         "1.21.4" => Some(include_bytes!("../data/mods/oppaclient-1.21.4.jar")),
         "1.21.10" => Some(include_bytes!("../data/mods/oppaclient-1.21.10.jar")),
         "1.21.11" => Some(include_bytes!("../data/mods/oppaclient-1.21.11.jar")),
+        "26.1" | "26.1.1" | "26.1.2" => Some(include_bytes!("../data/mods/oppaclient-26.1.jar")),
+        "26.2" => Some(include_bytes!("../data/mods/oppaclient-26.2.jar")),
+        "26.3" => Some(include_bytes!("../data/mods/oppaclient-26.3.jar")),
         _ => None,
     }
 }

@@ -1,0 +1,24 @@
+{
+	"required": true,
+	"package": "dev.oppaclient.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"BadgeMixin",
+		"CameraMixin",
+		"ClientWorldPropertiesMixin",
+		"EntityLookMixin",
+		"FireOverlayMixin",
+		"GameRendererInvoker",
+		"FovMixin",
+		"InactivityFpsLimiterMixin",
+		"InteractionManagerAccessor",
+		"LightmapMixin",
+		"MinecraftClientMixin",
+		"MouseMixin",
+		"NametagMixin",
+		"WorldWeatherMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

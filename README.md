@@ -13,7 +13,7 @@ A Minecraft launcher for Linux and Windows, with its own in-game mod.
 
 ## Mod
 
-Fabric 1.21.1, 1.21.4, 1.21.10 and 1.21.11. The launcher installs it into matching instances.
+Fabric 1.21.1, 1.21.4, 1.21.10, 1.21.11, 26.1 to 26.1.2, 26.2 and 26.3. The launcher installs it into matching instances.
 
 - Draggable, resizable HUD
 - Block overlay, zoom, free look and a custom crosshair

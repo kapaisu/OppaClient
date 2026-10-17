@@ -1,9 +1,11 @@
 plugins {
 	id 'fabric-loom' version '1.18.2' apply false
+	id 'net.fabricmc.fabric-loom' version '1.18.2' apply false
 }
 
 subprojects {
-	apply plugin: 'fabric-loom'
+	def modern = project.minecraft_version.startsWith('26')
+	apply plugin: modern ? 'net.fabricmc.fabric-loom' : 'fabric-loom'
 
 	version = "${rootProject.mod_version}+${project.minecraft_version}"
 	group = rootProject.maven_group
@@ -14,16 +16,22 @@ subprojects {
 
 	sourceSets {
 		main {
-			java.srcDirs += rootProject.file('common/java')
+			java.srcDirs += rootProject.file('shared/java')
+			java.srcDirs += rootProject.file(modern ? 'common26/java' : 'common/java')
 			resources.srcDirs += rootProject.file('common/resources')
 		}
 	}
 
 	dependencies {
 		minecraft "com.mojang:minecraft:${project.minecraft_version}"
-		mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-		modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
-		modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+		if (modern) {
+			implementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+			implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+		} else {
+			mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+			modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+			modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+		}
 	}
 
 	processResources {
@@ -34,18 +42,21 @@ subprojects {
 		}
 	}
 
+	def javaVersion = modern ? 25 : 21
+
 	tasks.withType(JavaCompile).configureEach {
-		it.options.release = 21
+		it.options.release = javaVersion
 	}
 
 	java {
-		sourceCompatibility = JavaVersion.VERSION_21
-		targetCompatibility = JavaVersion.VERSION_21
+		sourceCompatibility = JavaVersion.toVersion(javaVersion)
+		targetCompatibility = JavaVersion.toVersion(javaVersion)
 	}
 
 	tasks.register('bundle', Copy) {
-		dependsOn remapJar
-		from remapJar.archiveFile
+		def built = modern ? tasks.named('jar') : tasks.named('remapJar')
+		dependsOn built
+		from built.flatMap { it.archiveFile }
 		into rootProject.file('../data/mods')
 		rename { "oppaclient-${project.minecraft_version}.jar" }
 	}
