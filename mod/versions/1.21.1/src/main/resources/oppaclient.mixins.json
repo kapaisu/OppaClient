@@ -4,6 +4,8 @@
 	"compatibilityLevel": "JAVA_21",
 	"client": [
 		"BadgeMixin",
+		"StandBadgeMixin",
+		"TextDisplayBadgeMixin",
 		"CameraMixin",
 		"ClientWorldPropertiesMixin",
 		"EntityLookMixin",

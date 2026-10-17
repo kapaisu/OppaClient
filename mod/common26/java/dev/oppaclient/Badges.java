@@ -19,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.phys.AABB;
 
 public final class Badges {
 	private static final URI LOOKUP = URI.create("https://oppaclient.com/api/users.php");
@@ -31,6 +34,7 @@ public final class Badges {
 	private static Component mark;
 	private static volatile boolean busy;
 	private static int ticks;
+	private static final Set<Integer> stands = new HashSet<>();
 
 	public static boolean has(AbstractClientPlayer player) {
 		if (!Config.get().badges) return false;
@@ -45,7 +49,35 @@ public final class Badges {
 		return Component.empty().append(mark).append(" ").append(name);
 	}
 
+	public static boolean rides(Entity entity) {
+		return entity.getRootVehicle() instanceof AbstractClientPlayer player && player != entity && has(player);
+	}
+
+	public static boolean marks(Entity entity) {
+		return entity instanceof ArmorStand && stands.contains(entity.getId());
+	}
+
+	private static boolean nametagStand(ArmorStand stand) {
+		return stand.isInvisible() && stand.hasCustomName() && stand.isCustomNameVisible();
+	}
+
+	private static void findStands(Minecraft mc) {
+		stands.clear();
+		if (mc.level == null || !Config.get().badges) return;
+		for (AbstractClientPlayer p : mc.level.players()) {
+			if (!has(p)) continue;
+			double x = p.getX(), y = p.getY(), z = p.getZ();
+			AABB area = new AABB(x - 0.6, y + 1.2, z - 0.6, x + 0.6, y + 4, z + 0.6);
+			ArmorStand closest = null;
+			for (ArmorStand stand : mc.level.getEntitiesOfClass(ArmorStand.class, area, Badges::nametagStand)) {
+				if (closest == null || stand.getY() < closest.getY()) closest = stand;
+			}
+			if (closest != null) stands.add(closest.getId());
+		}
+	}
+
 	public static void tick(Minecraft mc) {
+		findStands(mc);
 		if (++ticks % 40 != 0 || busy || mc.level == null || !Config.get().badges) return;
 		long now = System.currentTimeMillis();
 		List<UUID> due = new ArrayList<>();
