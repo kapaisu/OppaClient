@@ -1,6 +1,6 @@
 pkgname=oppa
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Minecraft launcher'
 arch=(x86_64 aarch64)
 license=(custom)
@@ -25,6 +25,7 @@ build() {
 package() {
   cd "$startdir"
   install -Dm755 target/release/oppa "$pkgdir/usr/bin/oppa"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/oppa/LICENSE"
   install -Dm644 data/dev.oppa.Launcher.desktop "$pkgdir/usr/share/applications/dev.oppa.Launcher.desktop"
   for size in 32 48 64 128 256 512; do
     install -Dm644 "data/icon-$size.png" "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/dev.oppa.Launcher.png"

@@ -33,6 +33,7 @@ modules:
     build-commands:
       - cargo build --release --locked
       - install -Dm755 target/release/oppa /app/bin/oppa
+      - install -Dm644 LICENSE /app/share/licenses/dev.oppa.Launcher/LICENSE
       - install -Dm644 data/dev.oppa.Launcher.desktop /app/share/applications/dev.oppa.Launcher.desktop
       - for s in 32 48 64 128 256 512; do install -Dm644 data/icon-$s.png /app/share/icons/hicolor/${s}x${s}/apps/dev.oppa.Launcher.png; done
     sources:

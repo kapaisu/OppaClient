@@ -49,4 +49,4 @@ Needs `rust`, `jdk25-openjdk`, `gtk4`, `libadwaita` and `webkitgtk-6.0`.
 makepkg -si
 ```
 
-Made by kapaisu (q3c on Discord).
+Made by kapaisu (q3c on Discord). Source available, see [LICENSE](LICENSE).

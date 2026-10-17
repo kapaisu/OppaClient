@@ -1,0 +1,28 @@
+Oppa License
+
+Copyright (c) 2026 kapaisu (q3c on Discord). All rights reserved.
+
+This code is source available, not open source.
+
+You may:
+- read and study the source code
+- take ideas and inspiration from it for your own work, written by you
+- build and run it for your own personal use
+- link to this repository
+
+You may not:
+- copy this code, in whole or in part, into another project
+- modify it and share, publish or distribute the modified version
+- redistribute it, rebrand it, or present it as your own work
+- sell it or use it in a commercial product
+
+Writing your own code that does similar things is fine. Copying this code and
+changing names, formatting or structure is not.
+
+Third-party parts keep their own licenses. The Adwaita Sans font in
+mod/common/resources/assets/oppaclient/font is under the SIL Open Font License,
+included next to it.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM THE USE OF THE SOFTWARE.

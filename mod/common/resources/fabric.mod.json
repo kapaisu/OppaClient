@@ -7,7 +7,7 @@
   "authors": [
     "kapaisu (q3c on Discord)"
   ],
-  "license": "MIT",
+  "license": "LicenseRef-Oppa",
   "icon": "assets/oppaclient/icon.png",
   "environment": "client",
   "entrypoints": {
