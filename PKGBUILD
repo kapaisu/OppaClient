@@ -1,6 +1,6 @@
 pkgname=oppa
 pkgver=0.1.0
-pkgrel=4
+pkgrel=5
 pkgdesc='Minecraft launcher'
 arch=(x86_64 aarch64)
 license=(custom)

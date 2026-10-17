@@ -8,9 +8,7 @@ import dev.oppaclient.platform.Gfx;
 import dev.oppaclient.platform.Platform;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.screen.option.OptionsScreen;
-import net.minecraft.client.gui.screen.world.SelectWorldScreen;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
@@ -34,8 +32,8 @@ public final class MainMenu extends BaseScreen {
 	@Override
 	protected void init() {
 		items.clear();
-		add("Singleplayer", () -> client.setScreen(new SelectWorldScreen(this)));
-		add("Multiplayer", () -> client.setScreen(new MultiplayerScreen(this)));
+		add("Singleplayer", () -> client.setScreen(new WorldsScreen(this)));
+		add("Multiplayer", () -> client.setScreen(new ServersScreen(this)));
 		if (FabricLoader.getInstance().isModLoaded("modmenu")) {
 			add("Mods", this::openModMenu);
 		}

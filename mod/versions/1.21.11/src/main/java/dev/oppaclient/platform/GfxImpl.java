@@ -62,6 +62,15 @@ public final class GfxImpl implements Gfx {
 	}
 
 	@Override
+	public void wrapped(Text text, int x, int y, int width, int maxLines, int lineHeight, int argb) {
+		var font = MinecraftClient.getInstance().textRenderer;
+		var lines = font.wrapLines(text, width);
+		for (int i = 0; i < Math.min(maxLines, lines.size()); i++) {
+			ctx.drawText(font, lines.get(i), x, y + i * lineHeight, argb, false);
+		}
+	}
+
+	@Override
 	public void item(ItemStack stack, int x, int y) {
 		ctx.drawItem(stack, x, y);
 	}

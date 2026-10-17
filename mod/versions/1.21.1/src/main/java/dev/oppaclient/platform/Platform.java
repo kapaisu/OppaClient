@@ -7,12 +7,15 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.multiplayer.AddServerScreen;
+import net.minecraft.client.gui.screen.world.CreateWorldScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.Entity;
 import net.minecraft.text.Style;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
@@ -73,5 +76,19 @@ public final class Platform {
 
 	public static Vec3d entityPos(Entity entity) {
 		return entity.getPos();
+	}
+
+	public static void createWorld(net.minecraft.client.gui.screen.Screen parent) {
+		CreateWorldScreen.create(MinecraftClient.getInstance(), parent);
+	}
+
+	public static void ping(net.minecraft.client.network.MultiplayerServerListPinger pinger, net.minecraft.client.network.ServerInfo info,
+			Runnable save, Runnable done) throws java.net.UnknownHostException {
+		pinger.add(info, save, done);
+	}
+
+	public static net.minecraft.client.gui.screen.Screen serverForm(net.minecraft.client.gui.screen.Screen parent,
+			it.unimi.dsi.fastutil.booleans.BooleanConsumer done, net.minecraft.client.network.ServerInfo info, boolean adding) {
+		return new AddServerScreen(parent, done, info);
 	}
 }

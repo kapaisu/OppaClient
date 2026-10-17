@@ -23,6 +23,8 @@ public interface Gfx {
 
 	void item(ItemStack stack, int x, int y);
 
+	void wrapped(Text text, int x, int y, int width, int maxLines, int lineHeight, int argb);
+
 	void effect(StatusEffectInstance effect, int x, int y, int size);
 
 	void scissor(int x0, int y0, int x1, int y1);

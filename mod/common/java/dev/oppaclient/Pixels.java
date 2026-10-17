@@ -20,6 +20,17 @@ public record Pixels(int width, int height, int[] argb) {
 		}
 	}
 
+	public static Pixels read(byte[] png) {
+		try {
+			BufferedImage img = ImageIO.read(new java.io.ByteArrayInputStream(png));
+			if (img == null) return null;
+			int w = img.getWidth(), h = img.getHeight();
+			return new Pixels(w, h, img.getRGB(0, 0, w, h, null, 0, w));
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
+	}
+
 	public int at(int x, int y) {
 		return argb[y * width + x];
 	}
