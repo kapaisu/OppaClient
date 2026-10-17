@@ -1,6 +1,6 @@
 # Oppa
 
-A Minecraft launcher for Arch Linux, with its own in-game mod.
+A Minecraft launcher for Linux and Windows, with its own in-game mod.
 
 ## Launcher
 
@@ -46,6 +46,8 @@ then search for Oppa in GNOME Software or KDE Discover, or run
 ```
 flatpak install --user oppa dev.oppa.Launcher
 ```
+
+Windows: download `Oppa-Setup.exe` from the latest release and run it.
 
 ## Build
 
