@@ -620,11 +620,11 @@ async fn run(
         drop(job);
         cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         let child = cmd.spawn().map_err(|e| anyhow::anyhow!("Couldn't start Java: {e}"))?;
-        anyhow::Ok(child)
+        anyhow::Ok((child, acc2))
     }
     .await;
 
-    let mut child = match result {
+    let (mut child, acc) = match result {
         Ok(c) => c,
         Err(e) => {
             let _ = status.send(Status::Failed(format!("{e:#}"))).await;
@@ -633,6 +633,8 @@ async fn run(
     };
     let start = now();
     let _ = status.send(Status::Started).await;
+    let (done, done_rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(crate::site::presence(acc.name, acc.uuid, acc.mc_token, done_rx));
 
     if let Some(out) = child.stdout.take() {
         let tx = lines.clone();
@@ -660,6 +662,7 @@ async fn run(
             child.wait().await
         }
     };
+    let _ = done.send(true);
     let secs = (now() - start).max(0) as u64;
     let code = exit.ok().and_then(|s| s.code());
     let _ = status.send(Status::Exited { code, start, secs }).await;

@@ -36,6 +36,7 @@ Name: "{autodesktop}\Oppa"; Filename: "{app}\bin\oppa.exe"; Tasks: desktopicon
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing the Microsoft Visual C++ runtime..."; Check: NeedsRuntime
 Filename: "{app}\bin\oppa.exe"; Description: "Open Oppa"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\bin\oppa.exe"; Flags: nowait; Check: WizardSilent
 
 [Code]
 function NeedsRuntime: Boolean;

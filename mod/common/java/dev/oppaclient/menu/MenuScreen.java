@@ -504,6 +504,9 @@ public final class MenuScreen extends BaseScreen {
 		toggle(ctx, "nametag", "Own nametag", "Shows your name above you in third person.", x, y, mouseX, mouseY, alpha,
 				() -> cfg.ownNametag, v -> cfg.ownNametag = v);
 		y += ROW;
+		toggle(ctx, "badges", "Oppa badges", "Shows the Oppa logo next to other players using Oppa.", x, y, mouseX, mouseY, alpha,
+				() -> cfg.badges, v -> cfg.badges = v);
+		y += ROW;
 		slider(ctx, "Low fire", "Lowers the fire overlay so you can see while burning.", x, y, mouseX, mouseY, alpha,
 				cfg.lowFire, 0, 1, cfg.lowFire == 0 ? "Off" : Math.round(cfg.lowFire * 100) + "%", v -> cfg.lowFire = stepped(v, 0.05f));
 		y += ROW;

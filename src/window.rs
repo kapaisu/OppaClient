@@ -35,7 +35,7 @@ pub struct Settings {
     pub dim: Option<f64>,
 }
 
-pub const DEFAULT_DIM: f64 = 0.30;
+pub const DEFAULT_DIM: f64 = 0.80;
 
 pub fn settings() -> Settings {
     std::fs::read(data_dir().join("settings.json"))
@@ -190,6 +190,7 @@ pub fn build(application: &adw::Application) {
     let (bar, reveal) = activity_bar();
     let toolbar = adw::ToolbarView::builder().content(&stack).reveal_bottom_bars(false).build();
     toolbar.add_top_bar(&header);
+    toolbar.add_top_bar(&crate::update::banner(&app));
     toolbar.add_bottom_bar(&bar);
     reveal(toolbar.clone());
 

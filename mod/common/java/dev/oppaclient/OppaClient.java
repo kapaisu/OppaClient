@@ -25,6 +25,7 @@ public final class OppaClient implements ClientModInitializer {
 		OverlayConfig.load();
 		Keys.register();
 		ClientTickEvents.END_CLIENT_TICK.register(Keys::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(Badges::tick);
 		Platform.init();
 	}
 }

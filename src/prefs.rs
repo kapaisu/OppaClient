@@ -30,7 +30,7 @@ pub fn open(app: &Rc<App>) {
 
     let image = adw::ActionRow::builder()
         .title("Image")
-        .subtitle(if s.background.is_some() { "Your image" } else { "Forest" })
+        .subtitle(if s.background.is_some() { "Your image" } else { "Default" })
         .build();
     image.add_prefix(&frame);
     let choose = gtk::Button::builder().label("Choose…").valign(gtk::Align::Center).css_classes(["flat"]).build();
@@ -76,7 +76,7 @@ pub fn open(app: &Rc<App>) {
             let _ = std::fs::remove_file(data_dir().join(FILE));
             app.apply_background();
             thumb.set_paintable(app.backdrop.paintable().as_ref());
-            image.set_subtitle("Forest");
+            image.set_subtitle("Default");
             b.set_sensitive(false);
         }
     ));
