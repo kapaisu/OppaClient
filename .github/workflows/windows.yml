@@ -50,7 +50,9 @@ jobs:
           Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile data/windows/vc_redist.x64.exe
           choco install innosetup -y --no-progress
           $env:OPPA_VERSION = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" data\windows\oppa.iss
+          $iscc = Get-ChildItem "C:\Program Files*\Inno Setup*\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          & $iscc.FullName data\windows\oppa.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4
         with:
