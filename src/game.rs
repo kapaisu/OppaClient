@@ -571,11 +571,11 @@ fn pick_jvm(want: u32) -> anyhow::Result<PathBuf> {
     if Path::new("/.flatpak-info").exists() {
         bail!("This version needs Java {want}, which this build doesn't include.");
     }
-    let pkg = match want {
-        16 => "jre17-openjdk".to_string(),
-        n => format!("jre{n}-openjdk"),
-    };
-    bail!("This version needs Java {want}.\nsudo pacman -S {pkg}")
+    let want = if want == 16 { 17 } else { want };
+    if Path::new("/usr/bin/apt-get").exists() {
+        bail!("This version needs Java {want}.\nsudo apt install openjdk-{want}-jre")
+    }
+    bail!("This version needs Java {want}.\nsudo pacman -S jre{want}-openjdk")
 }
 
 async fn system_java(v: &VersionJson, want: u32, job: &Job) -> anyhow::Result<PathBuf> {

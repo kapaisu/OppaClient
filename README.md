@@ -47,6 +47,12 @@ then search for Oppa in GNOME Software or KDE Discover, or run
 flatpak install --user oppa dev.oppa.Launcher
 ```
 
+Ubuntu 26.04 or newer: download `oppa_<version>_amd64.deb` from the latest release, then
+
+```
+sudo apt install ./oppa_*_amd64.deb
+```
+
 Windows: download `Oppa-Setup.exe` from the latest release and run it.
 
 ## Build

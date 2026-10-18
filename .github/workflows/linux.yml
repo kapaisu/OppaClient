@@ -1,0 +1,52 @@
+name: Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release to attach the package to
+        required: false
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    steps:
+      - name: Tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates curl git gh pkg-config dpkg-dev \
+            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev openjdk-25-jdk-headless
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+
+      - name: Mod
+        working-directory: mod
+        run: ./gradlew bundle --no-daemon --console=plain
+
+      - name: Launcher
+        run: cargo build --release --locked
+
+      - name: Package
+        run: data/deb/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oppa-deb
+          path: dist/*.deb
+
+      - name: Attach to release
+        if: github.event_name == 'release' || inputs.tag != ''
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          gh release upload "${{ github.event.release.tag_name || inputs.tag }}" dist/*.deb --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

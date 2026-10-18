@@ -12,6 +12,7 @@ use crate::window::App;
 enum Channel {
     Windows,
     Pacman,
+    Deb,
     Flatpak,
     Other,
 }
@@ -24,6 +25,9 @@ fn channel() -> Channel {
         return Channel::Flatpak;
     }
     let exe = std::env::current_exe().unwrap_or_default();
+    if exe.starts_with("/usr/bin") && Path::new("/var/lib/dpkg/info/oppa.list").exists() {
+        return Channel::Deb;
+    }
     if exe.starts_with("/usr/bin") && Path::new("/usr/bin/pacman").exists() {
         return Channel::Pacman;
     }
@@ -85,7 +89,11 @@ fn confirm(app: &Rc<App>, banner: &adw::Banner, latest: &Latest, version: &str, 
     dialog.add_response("update", "Update");
     dialog.set_response_appearance("update", adw::ResponseAppearance::Suggested);
     dialog.set_default_response(Some("update"));
-    let url = format!("https://github.com/kapaisu/OppaClient/releases/download/v{version}/Oppa-Setup.exe");
+    let file = match ch {
+        Channel::Deb => format!("oppa_{version}_{}.deb", deb_arch()),
+        _ => "Oppa-Setup.exe".to_string(),
+    };
+    let url = format!("https://github.com/kapaisu/OppaClient/releases/download/v{version}/{file}");
     let (app2, banner) = (app.clone(), banner.clone());
     dialog.connect_response(Some("update"), move |_, _| {
         banner.set_revealed(false);
@@ -93,6 +101,7 @@ fn confirm(app: &Rc<App>, banner: &adw::Banner, latest: &Latest, version: &str, 
         glib::spawn_future_local(async move {
             let result = match ch {
                 Channel::Windows => net::bg(windows(url)).await,
+                Channel::Deb => net::bg(deb(url)).await,
                 _ => net::bg(pacman()).await,
             };
             match result {
@@ -112,6 +121,29 @@ async fn windows(url: String) -> anyhow::Result<()> {
     net::fetch(net::Fetch { url, dest: dest.clone(), sha1: None, size: 0 }).await?;
     drop(job);
     std::process::Command::new(dest).args(["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"]).spawn()?;
+    Ok(())
+}
+
+fn deb_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        other => other,
+    }
+}
+
+async fn deb(url: String) -> anyhow::Result<()> {
+    let job = Job::begin("Downloading update");
+    let dest = std::env::temp_dir().join(format!("oppa-update-{}.deb", std::process::id()));
+    let _ = tokio::fs::remove_file(&dest).await;
+    net::fetch(net::Fetch { url, dest: dest.clone(), sha1: None, size: 0 }).await?;
+    job.relabel("Updating Oppa");
+    let status = tokio::process::Command::new("pkexec").arg("apt-get").args(["install", "-y"]).arg(&dest).status().await;
+    let _ = tokio::fs::remove_file(&dest).await;
+    let status = status?;
+    if !status.success() {
+        anyhow::bail!("apt exited with {}", status.code().unwrap_or(-1));
+    }
     Ok(())
 }
 
