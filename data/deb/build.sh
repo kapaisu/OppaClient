@@ -17,7 +17,8 @@ done
 
 mkdir -p debian
 printf 'Source: oppa\n\nPackage: oppa\nArchitecture: any\n' > debian/control
-depends=$(dpkg-shlibdeps -O -e"$root/usr/bin/oppa" 2>/dev/null | sed -n 's/^shlibs:Depends=//p')
+depends=$(dpkg-shlibdeps -O -e"$root/usr/bin/oppa" 2>/dev/null | sed -n 's/^shlibs:Depends=//p' \
+  | sed 's/libgtk-4-1 ([^)]*)/libgtk-4-1 (>= 4.20)/; s/libadwaita-1-0 ([^)]*)/libadwaita-1-0 (>= 1.8)/')
 rm -rf debian
 
 cat > "$root/DEBIAN/control" <<CONTROL
