@@ -4,6 +4,8 @@ import dev.oppaclient.OppaClient;
 import dev.oppaclient.hud.Crosshair;
 import dev.oppaclient.hud.Hud;
 import dev.oppaclient.overlay.IrisCompat;
+import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityFeatureRendererRegistrationCallback;
+import net.minecraft.client.render.entity.PlayerEntityRenderer;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
@@ -28,6 +30,9 @@ public final class Platform {
 	private Platform() {}
 
 	public static void init() {
+		LivingEntityFeatureRendererRegistrationCallback.EVENT.register((type, renderer, helper, context) -> {
+			if (renderer instanceof PlayerEntityRenderer<?> player) helper.register(new CosmeticsLayer(player));
+		});
 		NeonPipelines.bootstrap();
 		IrisCompat.init((Object[]) NeonPipelines.world());
 
@@ -46,6 +51,31 @@ public final class Platform {
 			MinecraftClient mc = MinecraftClient.getInstance();
 			if (Hud.drawsCrosshair(mc)) Crosshair.draw(new GfxImpl(ctx), mc);
 			else vanilla.render(ctx, tick);
+		});
+	}
+
+	public static boolean gliding(net.minecraft.entity.player.PlayerEntity player) {
+		return player.isGliding();
+	}
+
+	public static void join(String address) {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc.world != null) {
+			if (mc.isInSingleplayer()) mc.disconnectWithSavingScreen();
+			else mc.disconnectWithProgressScreen();
+		}
+		net.minecraft.client.network.ServerInfo info = new net.minecraft.client.network.ServerInfo(address, address, net.minecraft.client.network.ServerInfo.ServerType.OTHER);
+		net.minecraft.client.gui.screen.multiplayer.ConnectScreen.connect(new net.minecraft.client.gui.screen.TitleScreen(), mc,
+				net.minecraft.client.network.ServerAddress.parse(address), info, false, null);
+	}
+
+	public static void showCape() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		mc.execute(() -> {
+			if (mc.options.isPlayerModelPartEnabled(net.minecraft.entity.player.PlayerModelPart.CAPE)) return;
+			mc.options.setPlayerModelPart(net.minecraft.entity.player.PlayerModelPart.CAPE, true);
+			mc.options.write();
+			mc.options.sendClientSettings();
 		});
 	}
 

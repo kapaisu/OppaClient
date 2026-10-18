@@ -3,7 +3,9 @@ package dev.oppaclient.hud;
 import dev.oppaclient.Config;
 import dev.oppaclient.Paint;
 import dev.oppaclient.menu.LayoutScreen;
+import dev.oppaclient.platform.BaseScreen;
 import dev.oppaclient.platform.Gfx;
+import dev.oppaclient.social.ToastView;
 import dev.oppaclient.platform.Platform;
 import net.minecraft.client.MinecraftClient;
 
@@ -23,7 +25,10 @@ public final class Hud {
 			new Readouts.Biome(),
 			new Readouts.Day(),
 			new Readouts.Memory(),
-			new Readouts.Server());
+			new Readouts.Server(),
+			new Readouts.Reach(),
+			new Readouts.Combo(),
+			new Readouts.Items());
 
 	private static final Element EFFECTS = ELEMENTS.stream().filter(e -> e instanceof Effects).findFirst().orElseThrow();
 
@@ -91,10 +96,13 @@ public final class Hud {
 		MinecraftClient mc = MinecraftClient.getInstance();
 		frame++;
 		Clicks.poll(mc);
-		if (mc.options.hudHidden || Config.get().hudHidden || mc.currentScreen instanceof LayoutScreen || mc.getDebugHud().shouldShowDebugHud()) return;
-		for (Element e : ELEMENTS) {
-			if (!e.placement().enabled || e.idle(mc)) continue;
-			draw(ctx, mc, e, rect(e, mc, false), false);
+		if (mc.options.hudHidden) return;
+		if (!Config.get().hudHidden && !(mc.currentScreen instanceof LayoutScreen) && !mc.getDebugHud().shouldShowDebugHud()) {
+			for (Element e : ELEMENTS) {
+				if (!e.placement().enabled || e.idle(mc)) continue;
+				draw(ctx, mc, e, rect(e, mc, false), false);
+			}
 		}
+		if (!(mc.currentScreen instanceof BaseScreen)) ToastView.draw(ctx, mc.getWindow().getScaledWidth(), 8);
 	}
 }

@@ -3,6 +3,8 @@ package dev.oppaclient.platform;
 import dev.oppaclient.OppaClient;
 import dev.oppaclient.hud.Hud;
 import dev.oppaclient.overlay.IrisCompat;
+import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityFeatureRendererRegistrationCallback;
+import net.minecraft.client.render.entity.PlayerEntityRenderer;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.SharedConstants;
@@ -26,6 +28,9 @@ public final class Platform {
 	private Platform() {}
 
 	public static void init() {
+		LivingEntityFeatureRendererRegistrationCallback.EVENT.register((type, renderer, helper, context) -> {
+			if (renderer instanceof PlayerEntityRenderer player) helper.register(new CosmeticsLayer(player));
+		});
 		IrisCompat.init();
 		WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, hit) -> !OppaClient.OUTLINE.hidesVanillaOutline());
 		WorldRenderEvents.LAST.register(context -> {
@@ -33,6 +38,33 @@ public final class Platform {
 			OppaClient.OUTLINE.render(new Quads(context.consumers(), context.camera().getPos(), new Matrix4f(context.positionMatrix())));
 		});
 		HudRenderCallback.EVENT.register((ctx, tick) -> Hud.render(new GfxImpl(ctx)));
+	}
+
+	public static boolean gliding(net.minecraft.entity.player.PlayerEntity player) {
+		return player.isFallFlying();
+	}
+
+	public static void join(String address) {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc.world != null) {
+			boolean single = mc.isInSingleplayer();
+			mc.world.disconnect();
+			if (single) mc.disconnect(new net.minecraft.client.gui.screen.MessageScreen(Text.translatable("menu.savingLevel")));
+			else mc.disconnect();
+		}
+		net.minecraft.client.network.ServerInfo info = new net.minecraft.client.network.ServerInfo(address, address, net.minecraft.client.network.ServerInfo.ServerType.OTHER);
+		net.minecraft.client.gui.screen.multiplayer.ConnectScreen.connect(new net.minecraft.client.gui.screen.TitleScreen(), mc,
+				net.minecraft.client.network.ServerAddress.parse(address), info, false, null);
+	}
+
+	public static void showCape() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		mc.execute(() -> {
+			if (mc.options.isPlayerModelPartEnabled(net.minecraft.entity.player.PlayerModelPart.CAPE)) return;
+			mc.options.togglePlayerModelPart(net.minecraft.entity.player.PlayerModelPart.CAPE, true);
+			mc.options.write();
+			mc.options.sendClientSettings();
+		});
 	}
 
 	public static float guiScale() {

@@ -8,9 +8,10 @@ use gtk::glib;
 use crate::auth::{self, Account};
 use crate::instance::{self, Instance, data_dir};
 use crate::net::{self, Activity};
-use crate::{browse, dialogs, images, places, play, prefs, skin};
+use crate::{browse, dialogs, friends, images, places, play, prefs, skin};
 
 type Listener = Box<dyn Fn(&Rc<App>)>;
+type Joiner = Rc<dyn Fn(String)>;
 
 pub struct App {
     pub window: adw::ApplicationWindow,
@@ -23,6 +24,7 @@ pub struct App {
     pub account: RefCell<Option<Account>>,
     instance_listeners: RefCell<Vec<Listener>>,
     account_listeners: RefCell<Vec<Listener>>,
+    pub join: RefCell<Option<Joiner>>,
 }
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -35,6 +37,8 @@ pub struct Settings {
     pub dim: Option<f64>,
     #[serde(default)]
     pub discord: Option<bool>,
+    #[serde(default)]
+    pub share_server: Option<bool>,
 }
 
 pub const DEFAULT_DIM: f64 = 0.80;
@@ -125,6 +129,10 @@ impl App {
     }
 
     pub fn set_account(self: &Rc<Self>, acc: Option<Account>) {
+        let same = self.account.borrow().as_ref().map(|a| (&a.uuid, &a.mc_token)) == acc.as_ref().map(|a| (&a.uuid, &a.mc_token));
+        if !same {
+            crate::site::start(acc.clone());
+        }
         *self.account.borrow_mut() = acc;
         for f in self.account_listeners.borrow().iter() {
             f(self);
@@ -170,12 +178,14 @@ pub fn build(application: &adw::Application) {
         account: RefCell::new(None),
         instance_listeners: Default::default(),
         account_listeners: Default::default(),
+        join: Default::default(),
     });
 
     stack.add_titled(&play::page(&app), Some("play"), "Play");
     stack.add_titled(&browse::page(&app), Some("browse"), "Mods");
     stack.add_titled(&places::page(&app), Some("files"), "Files");
     stack.add_titled(&skin::page(&app), Some("skin"), "Skin");
+    stack.add_titled(&friends::page(&app), Some("friends"), "Friends");
 
     let switcher = adw::InlineViewSwitcher::builder()
         .stack(&stack)
@@ -225,7 +235,7 @@ pub fn build(application: &adw::Application) {
 fn shortcuts(app: &Rc<App>) {
     let keys = gtk::ShortcutController::new();
     keys.set_scope(gtk::ShortcutScope::Global);
-    for (i, name) in ["play", "browse", "files", "skin"].into_iter().enumerate() {
+    for (i, name) in ["play", "browse", "files", "skin", "friends"].into_iter().enumerate() {
         let stack = app.stack.clone();
         keys.add_shortcut(gtk::Shortcut::new(
             gtk::ShortcutTrigger::parse_string(&format!("<Ctrl>{}", i + 1)),

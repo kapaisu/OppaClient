@@ -67,6 +67,7 @@ public final class Config {
 	public boolean fullbright = false;
 	public boolean ownNametag = false;
 	public boolean badges = true;
+	public boolean cosmetics = true;
 	public boolean hudHidden = false;
 
 	public int backgroundFps = 30;

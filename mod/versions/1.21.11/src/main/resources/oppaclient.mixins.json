@@ -18,6 +18,7 @@
 		"MinecraftClientMixin",
 		"MouseMixin",
 		"NametagMixin",
+		"SkinMixin",
 		"WorldWeatherMixin"
 	],
 	"injectors": {

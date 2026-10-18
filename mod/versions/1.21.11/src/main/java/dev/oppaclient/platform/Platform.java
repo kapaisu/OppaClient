@@ -4,12 +4,18 @@ import dev.oppaclient.OppaClient;
 import dev.oppaclient.hud.Crosshair;
 import dev.oppaclient.hud.Hud;
 import dev.oppaclient.overlay.IrisCompat;
+import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityFeatureRendererRegistrationCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.screen.multiplayer.AddServerScreen;
+import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
+import net.minecraft.client.network.ServerAddress;
+import net.minecraft.client.network.ServerInfo;
+import net.minecraft.client.render.entity.PlayerEntityRenderer;
 import net.minecraft.client.gui.screen.world.CreateWorldScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.texture.NativeImage;
@@ -39,6 +45,9 @@ public final class Platform {
 		});
 
 		HudElementRegistry.addLast(OppaClient.id("hud"), (ctx, tick) -> Hud.render(new GfxImpl(ctx)));
+		LivingEntityFeatureRendererRegistrationCallback.EVENT.register((type, renderer, helper, context) -> {
+			if (renderer instanceof PlayerEntityRenderer<?> player) helper.register(new CosmeticsLayer(player));
+		});
 		HudElementRegistry.replaceElement(VanillaHudElements.STATUS_EFFECTS, vanilla -> (ctx, tick) -> {
 			if (!Hud.drawsEffects()) vanilla.render(ctx, tick);
 		});
@@ -46,6 +55,30 @@ public final class Platform {
 			MinecraftClient mc = MinecraftClient.getInstance();
 			if (Hud.drawsCrosshair(mc)) Crosshair.draw(new GfxImpl(ctx), mc);
 			else vanilla.render(ctx, tick);
+		});
+	}
+
+	public static boolean gliding(net.minecraft.entity.player.PlayerEntity player) {
+		return player.isGliding();
+	}
+
+	public static void join(String address) {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc.world != null) {
+			if (mc.isInSingleplayer()) mc.disconnectWithSavingScreen();
+			else mc.disconnectWithProgressScreen();
+		}
+		ServerInfo info = new ServerInfo(address, address, ServerInfo.ServerType.OTHER);
+		ConnectScreen.connect(new TitleScreen(), mc, ServerAddress.parse(address), info, false, null);
+	}
+
+	public static void showCape() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		mc.execute(() -> {
+			if (mc.options.isPlayerModelPartEnabled(net.minecraft.entity.player.PlayerModelPart.CAPE)) return;
+			mc.options.setPlayerModelPart(net.minecraft.entity.player.PlayerModelPart.CAPE, true);
+			mc.options.write();
+			mc.options.sendClientSettings();
 		});
 	}
 

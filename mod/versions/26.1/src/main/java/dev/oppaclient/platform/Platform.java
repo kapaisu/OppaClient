@@ -65,6 +65,48 @@ public final class Platform {
 		return new net.minecraft.client.gui.screens.options.OptionsScreen(parent, Minecraft.getInstance().options, false);
 	}
 
+	private static volatile boolean picking;
+
+	public static void pickImage(String title, java.util.function.Consumer<java.nio.file.Path> done) {
+		if (picking) return;
+		picking = true;
+		Thread t = new Thread(() -> {
+			try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+				String[] kinds = {"*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp"};
+				org.lwjgl.PointerBuffer filters = stack.mallocPointer(kinds.length);
+				for (String k : kinds) filters.put(stack.UTF8(k));
+				filters.flip();
+				String path = org.lwjgl.util.tinyfd.TinyFileDialogs.tinyfd_openFileDialog(title, null, filters, "Images", false);
+				if (path != null) Minecraft.getInstance().execute(() -> done.accept(java.nio.file.Path.of(path)));
+			} finally {
+				picking = false;
+			}
+		}, "oppa-picker");
+		t.setDaemon(true);
+		t.start();
+	}
+
+	public static void join(String address) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level != null) {
+			if (mc.hasSingleplayerServer()) mc.disconnectWithSavingScreen();
+			else mc.disconnectWithProgressScreen();
+		}
+		net.minecraft.client.multiplayer.ServerData info = new net.minecraft.client.multiplayer.ServerData(address, address, net.minecraft.client.multiplayer.ServerData.Type.OTHER);
+		net.minecraft.client.gui.screens.ConnectScreen.startConnecting(new net.minecraft.client.gui.screens.TitleScreen(), mc,
+				net.minecraft.client.multiplayer.resolver.ServerAddress.parseString(address), info, false, null);
+	}
+
+	public static void showCape() {
+		Minecraft mc = Minecraft.getInstance();
+		mc.execute(() -> {
+			if (mc.options.isModelPartEnabled(net.minecraft.world.entity.player.PlayerModelPart.CAPE)) return;
+			mc.options.setModelPart(net.minecraft.world.entity.player.PlayerModelPart.CAPE, true);
+			mc.options.save();
+			mc.options.broadcastOptions();
+		});
+	}
+
 	public static float guiScale() {
 		return Minecraft.getInstance().getWindow().getGuiScale();
 	}

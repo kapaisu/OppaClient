@@ -3,11 +3,14 @@
 mod auth;
 mod browse;
 mod bundled;
+mod crash;
 mod dialogs;
+mod friends;
 mod discord;
 mod game;
 mod images;
 mod instance;
+mod migrate;
 mod model;
 mod modrinth;
 mod net;
@@ -55,5 +58,7 @@ fn main() -> gtk::glib::ExitCode {
         Some(w) => w.present(),
         None => window::build(app),
     });
-    app.run()
+    let code = app.run();
+    let _ = net::rt().block_on(async { tokio::time::timeout(std::time::Duration::from_secs(2), site::sign_off()).await });
+    code
 }

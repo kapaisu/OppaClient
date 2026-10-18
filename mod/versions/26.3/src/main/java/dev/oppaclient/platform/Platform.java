@@ -62,6 +62,55 @@ public final class Platform {
 		return new net.minecraft.client.gui.screens.options.OptionsScreen(parent, Minecraft.getInstance().options);
 	}
 
+	private static org.lwjgl.sdl.SDL_DialogFileFilter.Buffer pickFilters;
+	private static org.lwjgl.sdl.SDL_DialogFileCallback pickCallback;
+	private static java.nio.ByteBuffer pickName, pickPattern;
+	private static java.util.function.Consumer<java.nio.file.Path> pickDone;
+
+	public static void pickImage(String title, java.util.function.Consumer<java.nio.file.Path> done) {
+		if (pickCallback != null) return;
+		pickDone = done;
+		pickName = org.lwjgl.system.MemoryUtil.memUTF8("Images");
+		pickPattern = org.lwjgl.system.MemoryUtil.memUTF8("png;jpg;jpeg;gif;bmp");
+		pickFilters = org.lwjgl.sdl.SDL_DialogFileFilter.calloc(1);
+		pickFilters.get(0).name(pickName).pattern(pickPattern);
+		pickCallback = org.lwjgl.sdl.SDL_DialogFileCallback.create((user, list, filter) -> {
+			String path = list != 0 && org.lwjgl.system.MemoryUtil.memGetAddress(list) != 0
+					? org.lwjgl.system.MemoryUtil.memUTF8(org.lwjgl.system.MemoryUtil.memGetAddress(list)) : null;
+			java.util.function.Consumer<java.nio.file.Path> after = pickDone;
+			Minecraft.getInstance().execute(() -> {
+				pickCallback.free();
+				pickFilters.free();
+				org.lwjgl.system.MemoryUtil.memFree(pickName);
+				org.lwjgl.system.MemoryUtil.memFree(pickPattern);
+				pickCallback = null;
+				if (path != null) after.accept(java.nio.file.Path.of(path));
+			});
+		});
+		org.lwjgl.sdl.SDLDialog.SDL_ShowOpenFileDialog(pickCallback, 0, Minecraft.getInstance().getWindow().handle(), pickFilters, (CharSequence) null, false);
+	}
+
+	public static void join(String address) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level != null) {
+			if (mc.hasSingleplayerServer()) mc.disconnectWithSavingScreen();
+			else mc.disconnectWithProgressScreen();
+		}
+		net.minecraft.client.multiplayer.ServerData info = new net.minecraft.client.multiplayer.ServerData(address, address, net.minecraft.client.multiplayer.ServerData.Type.OTHER);
+		net.minecraft.client.gui.screens.ConnectScreen.startConnecting(new net.minecraft.client.gui.screens.TitleScreen(), mc,
+				net.minecraft.client.multiplayer.resolver.ServerAddress.parseString(address), info, false, null);
+	}
+
+	public static void showCape() {
+		Minecraft mc = Minecraft.getInstance();
+		mc.execute(() -> {
+			if (mc.options.isModelPartEnabled(net.minecraft.world.entity.player.PlayerModelPart.CAPE)) return;
+			mc.options.setModelPart(net.minecraft.world.entity.player.PlayerModelPart.CAPE, true);
+			mc.options.save();
+			mc.options.broadcastOptions();
+		});
+	}
+
 	public static float guiScale() {
 		return Minecraft.getInstance().getWindow().getGuiScale();
 	}

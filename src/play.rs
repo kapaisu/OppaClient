@@ -14,7 +14,7 @@ use crate::{dialogs, game};
 enum Status {
     Renewed(Account),
     Started,
-    Exited { code: Option<i32>, start: i64, secs: u64 },
+    Exited { code: Option<i32>, start: i64, secs: u64, killed: bool },
     Failed(String),
 }
 
@@ -61,6 +61,7 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         .build();
     let menu = gio::Menu::new();
     menu.append(Some("Settings"), Some("play.settings"));
+    menu.append(Some("Change Version…"), Some("play.version"));
     menu.append(Some("Open Game Folder"), Some("play.folder"));
     menu.append(Some("Show Log"), Some("play.log"));
     more.set_menu_model(Some(&menu));
@@ -193,6 +194,12 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         app,
         move |_, _| dialogs::instance_settings(&app)
     ));
+    let change = gio::SimpleAction::new("version", None);
+    change.connect_activate(glib::clone!(
+        #[weak]
+        app,
+        move |_, _| dialogs::change_version(&app)
+    ));
     let folder = gio::SimpleAction::new("folder", None);
     folder.connect_activate(glib::clone!(
         #[weak]
@@ -227,6 +234,7 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         }
     ));
     group.add_action(&settings);
+    group.add_action(&change);
     group.add_action(&folder);
     group.add_action(&show_log);
     body.insert_action_group("play", Some(&group));
@@ -271,6 +279,18 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         ui,
         move |app| refresh(app, &ui)
     ));
+
+    let weak_app = Rc::downgrade(app);
+    let joiner = ui.clone();
+    *app.join.borrow_mut() = Some(Rc::new(move |server: String| {
+        let Some(app) = weak_app.upgrade() else { return };
+        if joiner.running.borrow().is_some() {
+            app.toast("Minecraft is already running. Accept the invite in game.");
+            return;
+        }
+        app.stack.set_visible_child_name("play");
+        launch(&app, &joiner, Some(server));
+    }));
 
     glib::timeout_add_seconds_local(
         30,
@@ -507,6 +527,10 @@ fn append_log(view: &gtk::TextView, line: &str) {
 }
 
 fn play_or_stop(app: &Rc<App>, ui: &Rc<Ui>) {
+    launch(app, ui, None);
+}
+
+fn launch(app: &Rc<App>, ui: &Rc<Ui>, join: Option<String>) {
     if let Some(r) = ui.running.borrow().as_ref() {
         if r.started.is_some() {
             let _ = r.kill.try_send(());
@@ -517,7 +541,7 @@ fn play_or_stop(app: &Rc<App>, ui: &Rc<Ui>) {
     let acc = app.account.borrow().clone();
     let Some(acc) = acc else {
         let (a, u) = (app.clone(), ui.clone());
-        dialogs::sign_in(app, Some(Box::new(move || play_or_stop(&a, &u)) as Box<dyn Fn()>));
+        dialogs::sign_in(app, Some(Box::new(move || launch(&a, &u, join.clone())) as Box<dyn Fn()>));
         return;
     };
 
@@ -529,7 +553,7 @@ fn play_or_stop(app: &Rc<App>, ui: &Rc<Ui>) {
     ui.log.buffer().set_text("");
     refresh(app, ui);
 
-    net::rt().spawn(run(inst.clone(), acc, lines_tx, kill_rx, status_tx));
+    net::rt().spawn(run(inst.clone(), acc, join, lines_tx, kill_rx, status_tx));
 
     let view = ui.log.clone();
     glib::spawn_future_local(async move {
@@ -554,17 +578,17 @@ fn play_or_stop(app: &Rc<App>, ui: &Rc<Ui>) {
                     ui.log_reveal.set_reveal_child(true);
                     refresh(&app, &ui);
                 }
-                Status::Exited { code, start, secs } => {
+                Status::Exited { code, start, secs, killed } => {
                     let finished = ui.running.borrow_mut().take();
-                    if finished.is_some_and(|r| r.hold.is_some()) {
-                        app.edit_instance(&inst.dir, |i| i.record_session(start, secs));
+                    let crashed = !killed && code.is_some_and(|c| c != 0);
+                    app.edit_instance(&inst.dir, |i| i.record_session(start, secs));
+                    if finished.is_some_and(|r| r.hold.is_some()) && !crashed {
                         app.window.close();
                         continue;
                     }
-                    app.edit_instance(&inst.dir, |i| i.record_session(start, secs));
-                    let crashed = code.is_some_and(|c| c != 0) && secs < 20 * 60;
                     if crashed {
-                        app.toast(&format!("Minecraft quit with code {}", code.unwrap_or(-1)));
+                        app.window.present();
+                        crate::crash::show(&app, &inst, start);
                     } else {
                         ui.log_reveal.set_reveal_child(false);
                     }
@@ -594,9 +618,22 @@ fn failed(app: &Rc<App>, msg: &str) {
     dialog.present(Some(&app.window));
 }
 
+fn quick_play(game: &str, server: &str) -> Vec<String> {
+    let minor = game.strip_prefix("1.").and_then(|r| r.split('.').next()).and_then(|m| m.parse::<u32>().ok());
+    if minor.is_some_and(|m| m < 20) {
+        let (host, port) = match server.rsplit_once(':') {
+            Some((h, p)) if p.parse::<u16>().is_ok() => (h, p),
+            _ => (server, "25565"),
+        };
+        return vec!["--server".into(), host.into(), "--port".into(), port.into()];
+    }
+    vec!["--quickPlayMultiplayer".into(), server.into()]
+}
+
 async fn run(
     inst: Instance,
     acc: Account,
+    join: Option<String>,
     lines: async_channel::Sender<String>,
     kill: async_channel::Receiver<()>,
     status: async_channel::Sender<Status>,
@@ -618,6 +655,12 @@ async fn run(
         )
         .await?;
         drop(job);
+        if let Some(token) = crate::site::wait_token(std::time::Duration::from_secs(4)).await {
+            cmd.env("OPPA_TOKEN", token);
+        }
+        if let Some(server) = &join {
+            cmd.args(quick_play(&inst.game_version, server));
+        }
         cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         let child = cmd.spawn().map_err(|e| anyhow::anyhow!("Couldn't start Java: {e}"))?;
         anyhow::Ok((child, acc2))
@@ -633,8 +676,9 @@ async fn run(
     };
     let start = now();
     let _ = status.send(Status::Started).await;
-    let (done, done_rx) = tokio::sync::watch::channel(false);
-    tokio::spawn(crate::site::presence(acc.name, acc.uuid, acc.mc_token, done_rx));
+    let _ = acc;
+    let share = crate::window::settings().share_server.unwrap_or(true);
+    crate::site::set_status("menu", "", &inst.game_version);
 
     crate::discord::set(crate::discord::Status::Menu { game: inst.game_version.clone() });
     if let Some(out) = child.stdout.take() {
@@ -644,6 +688,7 @@ async fn run(
             while let Ok(Some(l)) = r.next_line().await {
                 if let Some(status) = crate::discord::from_log(&l) {
                     crate::discord::set(status);
+                    crate::site::from_log(&l, share);
                 }
                 let _ = tx.send(l).await;
             }
@@ -659,16 +704,18 @@ async fn run(
         });
     }
 
+    let mut killed = false;
     let exit = tokio::select! {
         s = child.wait() => s,
         _ = kill.recv() => {
+            killed = true;
             let _ = child.start_kill();
             child.wait().await
         }
     };
-    let _ = done.send(true);
+    crate::site::set_status("launcher", "", "");
     crate::discord::set(crate::discord::Status::Launcher);
     let secs = (now() - start).max(0) as u64;
     let code = exit.ok().and_then(|s| s.code());
-    let _ = status.send(Status::Exited { code, start, secs }).await;
+    let _ = status.send(Status::Exited { code, start, secs, killed }).await;
 }

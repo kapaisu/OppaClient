@@ -3,6 +3,8 @@ package dev.oppaclient;
 import dev.oppaclient.menu.LayoutScreen;
 import dev.oppaclient.menu.MenuScreen;
 import dev.oppaclient.platform.Platform;
+import dev.oppaclient.social.Shots;
+import dev.oppaclient.social.Toasts;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
@@ -18,6 +20,7 @@ public final class Keys {
 	public static final KeyBinding LAYOUT = bind("layout", InputUtil.UNKNOWN_KEY.getCode());
 	public static final KeyBinding HUD = bind("hud", InputUtil.UNKNOWN_KEY.getCode());
 	public static final KeyBinding FULLBRIGHT = bind("fullbright", InputUtil.UNKNOWN_KEY.getCode());
+	public static final KeyBinding SHARE = bind("share", GLFW.GLFW_KEY_K);
 
 	public record Labeled(String label, KeyBinding key) {}
 
@@ -27,7 +30,8 @@ public final class Keys {
 			new Labeled("Free look", FREELOOK),
 			new Labeled("Edit layout", LAYOUT),
 			new Labeled("Hide HUD", HUD),
-			new Labeled("Fullbright", FULLBRIGHT));
+			new Labeled("Fullbright", FULLBRIGHT),
+			new Labeled("Share screenshot", SHARE));
 
 	private Keys() {}
 
@@ -42,7 +46,10 @@ public final class Keys {
 	static void tick(MinecraftClient mc) {
 		Config cfg = Config.get();
 		while (MENU.wasPressed()) {
-			if (mc.currentScreen == null) mc.setScreen(new MenuScreen());
+			if (mc.currentScreen == null) mc.setScreen(new MenuScreen(Toasts.has(Toasts.Kind.INVITE) || Toasts.has(Toasts.Kind.REQUEST) ? MenuScreen.FRIENDS : -1));
+		}
+		while (SHARE.wasPressed()) {
+			Shots.share(Shots.latest(), url -> mc.execute(() -> mc.keyboard.setClipboard(url)));
 		}
 		while (LAYOUT.wasPressed()) {
 			if (mc.currentScreen == null) mc.setScreen(new LayoutScreen(null));

@@ -148,3 +148,22 @@ pub async fn load_face(uuid: String, url: Option<String>) -> Option<[u8; 256]> {
     }
     face_from_skin(&cached?)
 }
+
+pub async fn face_of(uuid: String) -> Option<[u8; 256]> {
+    let fresh = std::fs::metadata(skin_cache(&uuid))
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t.elapsed().is_ok_and(|age| age.as_secs() < 86_400));
+    if fresh {
+        return load_face(uuid, None).await;
+    }
+    let id = uuid.clone();
+    let url = net::bg(async move {
+        let profile: serde_json::Value = net::get_json(&format!("https://sessionserver.mojang.com/session/minecraft/profile/{id}")).await.ok()?;
+        let encoded = profile["properties"].as_array()?.iter().find(|p| p["name"] == "textures")?["value"].as_str()?.to_string();
+        let decoded = gtk::glib::base64_decode(&encoded);
+        let textures: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+        textures["textures"]["SKIN"]["url"].as_str().map(str::to_string)
+    })
+    .await;
+    load_face(uuid, url).await
+}

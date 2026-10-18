@@ -37,11 +37,19 @@ public abstract class BaseScreen extends Screen {
 		return false;
 	}
 
+	protected void dropped(java.util.List<java.nio.file.Path> paths) {}
+
+	@Override
+	public final void onFilesDropped(java.util.List<java.nio.file.Path> paths) {
+		dropped(paths);
+	}
+
 	@Override
 	public final void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
 		GfxImpl g = new GfxImpl(ctx);
 		drawBackground(g);
 		draw(g, mouseX, mouseY);
+		dev.oppaclient.social.ToastView.draw(g, width, 36);
 	}
 
 	@Override

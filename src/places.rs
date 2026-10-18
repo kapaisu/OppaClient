@@ -180,6 +180,11 @@ struct Folder {
     list: gtk::ListBox,
     grid: gtk::FlowBox,
     content: gtk::Stack,
+    search: gtk::SearchEntry,
+    empty: gtk::Label,
+    empty_text: &'static str,
+    items: RefCell<Vec<(gtk::Widget, String, Option<gtk::Label>)>>,
+    shown: std::cell::Cell<&'static str>,
     monitor: RefCell<Option<gio::FileMonitor>>,
     pending: RefCell<Option<glib::SourceId>>,
     generation: std::cell::Cell<u32>,
@@ -201,11 +206,13 @@ fn open(app: &Rc<App>, nav: &adw::NavigationView, place: Place) {
 
     let back = gtk::Button::builder().icon_name("go-previous-symbolic").css_classes(["flat", "circular"]).tooltip_text("Back").build();
     let title = gtk::Label::builder().label(place.title()).xalign(0.0).hexpand(true).css_classes(["folder-title"]).build();
+    let search = gtk::SearchEntry::builder().placeholder_text(format!("Search {}", place.title().to_lowercase())).width_chars(18).valign(gtk::Align::Center).build();
     let add = gtk::Button::builder().label("Add Files…").css_classes(["flat"]).build();
     let reveal = gtk::Button::builder().icon_name("folder-open-symbolic").css_classes(["flat", "circular"]).tooltip_text("Open in file manager").build();
     let bar = gtk::Box::builder().spacing(10).build();
     bar.append(&back);
     bar.append(&title);
+    bar.append(&search);
     bar.append(&add);
     bar.append(&reveal);
 
@@ -220,12 +227,13 @@ fn open(app: &Rc<App>, nav: &adw::NavigationView, place: Place) {
         .valign(gtk::Align::Start)
         .activate_on_single_click(true)
         .build();
-    let empty = gtk::Label::builder()
-        .label(if place == Place::Saves || place == Place::Screenshots || place == Place::Logs {
+    let empty_text = if place == Place::Saves || place == Place::Screenshots || place == Place::Logs {
             "Nothing here yet."
         } else {
             "Nothing here yet. Drop files onto this window to add them."
-        })
+        };
+    let empty = gtk::Label::builder()
+        .label(empty_text)
         .wrap(true)
         .css_classes(["dim-label"])
         .valign(gtk::Align::Start)
@@ -254,6 +262,11 @@ fn open(app: &Rc<App>, nav: &adw::NavigationView, place: Place) {
         list,
         grid,
         content,
+        search: search.clone(),
+        empty: empty.clone(),
+        empty_text,
+        items: Default::default(),
+        shown: std::cell::Cell::new("list"),
         monitor: RefCell::new(None),
         pending: RefCell::new(None),
         generation: Default::default(),
@@ -266,6 +279,12 @@ fn open(app: &Rc<App>, nav: &adw::NavigationView, place: Place) {
             nav.pop();
         }
     ));
+    search.connect_search_changed(glib::clone!(
+        #[weak]
+        f,
+        move |_| filter(&f)
+    ));
+    search.set_key_capture_widget(Some(&page_box));
     reveal.connect_clicked(glib::clone!(
         #[weak]
         app,
@@ -428,24 +447,31 @@ fn fill(app: &Rc<App>, f: &Rc<Folder>) {
             f.list.remove(&c);
         }
         f.grid.remove_all();
+        f.items.borrow_mut().clear();
         if entries.is_empty() {
-            f.content.set_visible_child_name("empty");
+            f.shown.set("empty");
+            filter(&f);
             return;
         }
         if place == Place::Screenshots {
             for e in &entries {
-                f.grid.append(&shot(&app, e));
+                let child = shot(&app, e);
+                f.grid.append(&child);
+                f.items.borrow_mut().push((child.upcast(), e.name.to_lowercase(), None));
             }
-            f.content.set_visible_child_name("grid");
+            f.shown.set("grid");
+            filter(&f);
             return;
         }
         let mut rows = Vec::new();
         for e in &entries {
             let (row, icon, title, detail) = file_row(&app, place, e);
             f.list.append(&row);
+            f.items.borrow_mut().push((row.clone().upcast(), e.name.to_lowercase(), Some(title.clone())));
             rows.push((e.clone(), icon, title, detail));
         }
-        f.content.set_visible_child_name("list");
+        f.shown.set("list");
+        filter(&f);
 
         if matches!(place, Place::Mods | Place::ResourcePacks | Place::Shaders) {
             identify(rows).await;
@@ -479,6 +505,26 @@ async fn identify(rows: Vec<(Entry, gtk::Image, gtk::Label, gtk::Label)>) {
             images::icon(&url, &icon);
         }
         detail.set_label(&format!("{}    {}", e.name, glib::format_size(e.size)));
+    }
+}
+
+fn filter(f: &Folder) {
+    let query = f.search.text().trim().to_lowercase();
+    let mut any = false;
+    for (widget, name, title) in f.items.borrow().iter() {
+        let hit = query.is_empty() || name.contains(&query) || title.as_ref().is_some_and(|t| t.label().to_lowercase().contains(&query));
+        widget.set_visible(hit);
+        any |= hit;
+    }
+    let base = f.shown.get();
+    if base != "empty" && !any {
+        f.empty.set_label(&format!("Nothing matches “{}”.", f.search.text().trim()));
+        f.content.set_visible_child_name("empty");
+    } else {
+        if base == "empty" {
+            f.empty.set_label(f.empty_text);
+        }
+        f.content.set_visible_child_name(base);
     }
 }
 
@@ -592,6 +638,7 @@ fn shot(app: &Rc<App>, e: &Entry) -> gtk::FlowBoxChild {
 
     let menu = gio::Menu::new();
     menu.append(Some("Open"), Some("shot.open"));
+    menu.append(Some("Copy Share Link"), Some("shot.share"));
     menu.append(Some("Move to Trash"), Some("shot.trash"));
     let pop = gtk::PopoverMenu::from_model(Some(&menu));
     pop.set_parent(&child);
@@ -615,7 +662,15 @@ fn shot(app: &Rc<App>, e: &Entry) -> gtk::FlowBoxChild {
             }
         }
     ));
+    let share = gio::SimpleAction::new("share", None);
+    let p = e.path.clone();
+    share.connect_activate(glib::clone!(
+        #[weak]
+        app,
+        move |_, _| share_shot(&app, p.clone())
+    ));
     group.add_action(&open);
+    group.add_action(&share);
     group.add_action(&trash);
     child.insert_action_group("shot", Some(&group));
     let click = gtk::GestureClick::builder().button(3).build();
@@ -629,4 +684,36 @@ fn shot(app: &Rc<App>, e: &Entry) -> gtk::FlowBoxChild {
     ));
     child.add_controller(click);
     child
+}
+
+fn shared_links() -> HashMap<String, String> {
+    std::fs::read(crate::instance::data_dir().join("shared.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn share_shot(app: &Rc<App>, path: PathBuf) {
+    let key = path.to_string_lossy().into_owned();
+    if let Some(url) = shared_links().get(&key) {
+        app.window.clipboard().set_text(url);
+        app.toast("Link copied");
+        return;
+    }
+    let app = app.clone();
+    glib::spawn_future_local(async move {
+        let job = net::Job::begin("Uploading screenshot");
+        let result = net::bg(crate::site::upload_shot(path)).await;
+        drop(job);
+        match result {
+            Ok(url) => {
+                let mut links = shared_links();
+                links.insert(key, url.clone());
+                let _ = std::fs::write(crate::instance::data_dir().join("shared.json"), serde_json::to_vec(&links).unwrap_or_default());
+                app.window.clipboard().set_text(&url);
+                app.toast("Link copied");
+            }
+            Err(e) => app.toast(&format!("Couldn't share: {e}")),
+        }
+    });
 }

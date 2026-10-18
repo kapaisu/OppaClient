@@ -228,3 +228,17 @@ flowboxchild {
   font-weight: normal;
   padding: 6px 10px;
 }
+
+.friend {
+  padding: 10px 0;
+}
+
+.friend-face {
+  border-radius: 6px;
+}
+
+button.friend-action,
+button.add-friend {
+  min-height: 32px;
+  padding: 0 18px;
+}

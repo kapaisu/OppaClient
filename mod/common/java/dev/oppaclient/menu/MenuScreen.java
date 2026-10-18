@@ -13,6 +13,17 @@ import dev.oppaclient.overlay.Labeled;
 import dev.oppaclient.overlay.OverlayConfig;
 import dev.oppaclient.overlay.OverlaySettings;
 import dev.oppaclient.overlay.Preview;
+import dev.oppaclient.Picker;
+import dev.oppaclient.look.Catalog;
+import dev.oppaclient.look.Images;
+import dev.oppaclient.look.Look;
+import dev.oppaclient.look.Looks;
+import dev.oppaclient.look.Skins;
+import dev.oppaclient.look.Stage;
+import dev.oppaclient.look.Wardrobe;
+import dev.oppaclient.social.Api;
+import dev.oppaclient.social.Social;
+import dev.oppaclient.social.Toasts;
 import dev.oppaclient.platform.BaseScreen;
 import dev.oppaclient.platform.Gfx;
 import dev.oppaclient.platform.Platform;
@@ -33,7 +44,8 @@ import java.util.function.DoubleConsumer;
 
 public final class MenuScreen extends BaseScreen {
 	private static final int ROW = 20, TOP = 34, COLUMN = 300;
-	private static final String[] TABS = {"HUD", "Visuals", "Settings"};
+	private static final String[] TABS = {"HUD", "Visuals", "PvP", "Cosmetics", "Friends", "Settings"};
+	public static final int PVP = 2, COSMETICS = 3, FRIENDS = 4;
 	private static final String OVERLAY = "overlay", ZOOM = "zoom", FREELOOK = "freelook", CROSSHAIR = "crosshair";
 	private static int lastTab;
 
@@ -83,8 +95,30 @@ public final class MenuScreen extends BaseScreen {
 
 	private final List<Hit> hits = new ArrayList<>();
 
+	private String fieldKey;
+	private String fieldBuffer = "";
+	private String search = "";
+	private Social.Found found;
+	private String foundProblem;
+	private boolean searching;
+	private final Map<String, String> busy = new HashMap<>();
+	private String armed;
+	private long armedUntil;
+	private final Stage stage = new Stage();
+	private boolean turningStage;
+	private double stageLast;
+
 	public MenuScreen() {
+		this(-1);
+	}
+
+	public MenuScreen(int open) {
 		super(Text.literal("Oppa"));
+		if (open >= 0) tab = lastTab = open;
+	}
+
+	public boolean onFriends() {
+		return tab == FRIENDS && detail == null;
 	}
 
 	@Override
@@ -140,6 +174,12 @@ public final class MenuScreen extends BaseScreen {
 			y = hudList(ctx, x, y, mouseX, my, alpha);
 		} else if (tab == 1) {
 			y = visuals(ctx, x, y, mouseX, my, alpha);
+		} else if (tab == PVP) {
+			y = pvp(ctx, x, y, mouseX, my, alpha);
+		} else if (tab == COSMETICS) {
+			y = cosmetics(ctx, x, y, mouseX, my, alpha);
+		} else if (tab == FRIENDS) {
+			y = friends(ctx, x, y, mouseX, my, alpha);
 		} else {
 			y = settings(ctx, x, y, mouseX, my, alpha);
 		}
@@ -457,6 +497,344 @@ public final class MenuScreen extends BaseScreen {
 		Type.UI.drawRight(ctx, name, x + column(), y + 6, Paint.ink((waiting ? 0.95f : 0.55f) * alpha));
 	}
 
+	private boolean arm(String key) {
+		long now = System.currentTimeMillis();
+		if (key.equals(armed) && now < armedUntil) {
+			armed = null;
+			return true;
+		}
+		armed = key;
+		armedUntil = now + 3000;
+		return false;
+	}
+
+	private boolean armedFor(String key) {
+		return key.equals(armed) && System.currentTimeMillis() < armedUntil;
+	}
+
+	private int chip(Gfx ctx, String label, int right, int y, int mouseX, int mouseY, float alpha, boolean solid, Consumer<Press> action) {
+		int w = Type.UI.width(label) + 16, h = 15;
+		int x = right - w;
+		boolean hover = action != null && inside(mouseX, mouseY, x, y, w, h);
+		if (solid) {
+			Paint.round(ctx, x, y, w, h, h / 2f, Paint.ink((hover ? 1f : 0.88f) * alpha));
+			Type.UI.draw(ctx, label, x + 8, y + 4, Paint.shade(0.9f * alpha));
+		} else {
+			Paint.round(ctx, x, y, w, h, h / 2f, Paint.ink((hover ? 0.16f : 0.09f) * alpha));
+			Type.UI.draw(ctx, label, x + 8, y + 4, Paint.ink((action == null ? 0.45f : 0.9f) * alpha));
+		}
+		if (action != null) hits.add(new Hit(x, y, w, h, true, action));
+		return x - 6;
+	}
+
+	private void field(Gfx ctx, String key, String placeholder, String value, int x, int y, int w, int mouseX, int mouseY, float alpha) {
+		boolean editing = key.equals(fieldKey);
+		boolean hover = inside(mouseX, mouseY, x - 8, y, w + 8, ROW);
+		Paint.round(ctx, x - 8, y + 1, w + 8, ROW - 2, 7, Paint.ink((editing ? 0.1f : hover ? 0.08f : 0.06f) * alpha));
+		String shown = editing ? fieldBuffer : value;
+		if (shown.isEmpty() && !editing) Type.UI.draw(ctx, placeholder, x, y + 6, Paint.ink(0.4f * alpha));
+		else Type.UI.draw(ctx, shown + (editing && (System.currentTimeMillis() / 500) % 2 == 0 ? "_" : ""), x, y + 6, Paint.ink(0.95f * alpha));
+		hits.add(new Hit(x - 8, y, w + 8, ROW, true, false, true, click -> {
+			if (!key.equals(fieldKey)) {
+				fieldKey = key;
+				fieldBuffer = value;
+			}
+		}));
+	}
+
+	private void commitField() {
+		if (fieldKey == null) return;
+		String key = fieldKey, value = fieldBuffer.trim();
+		fieldKey = null;
+		if (key.equals("search")) {
+			search = value;
+			lookup();
+		}
+	}
+
+	private void lookup() {
+		found = null;
+		foundProblem = null;
+		if (search.isEmpty()) return;
+		if (!search.matches("[A-Za-z0-9_]{1,16}")) {
+			foundProblem = "That isn't a Minecraft name.";
+			return;
+		}
+		searching = true;
+		String asked = search;
+		Social.lookup(asked).whenComplete((f, err) -> client.execute(() -> {
+			if (!asked.equals(search)) return;
+			searching = false;
+			if (err != null) foundProblem = Api.message(err);
+			else found = f;
+		}));
+	}
+
+	private void act(String key, java.util.concurrent.CompletableFuture<?> work, String done) {
+		busy.put(key, "");
+		work.whenComplete((r, err) -> client.execute(() -> {
+			busy.remove(key);
+			if (err != null) Toasts.show("Couldn't do that", Api.message(err), Toasts.Kind.INFO);
+			else if (done != null) Toasts.show(done, null, Toasts.Kind.INFO);
+			if (!search.isEmpty() && found != null) lookup();
+		}));
+	}
+
+	private String currentServer() {
+		if (client.world == null || client.isInSingleplayer() || client.getCurrentServerEntry() == null) return null;
+		return client.getCurrentServerEntry().address.trim();
+	}
+
+	private int person(Gfx ctx, String uuid, String name, String detail, int x, int y, int mouseX, int mouseY, float alpha) {
+		int w = column();
+		if (inside(mouseX, mouseY, x - 8, y, w + 16, 30)) Paint.round(ctx, x - 8, y, w + 16, 30, 7, Paint.ink(0.04f * alpha));
+		Skins.face(ctx, uuid, x, y + 5, 20, alpha);
+		Type.STRONG.draw(ctx, name, x + 28, y + 6, Paint.ink(0.95f * alpha));
+		Type.SMALL.draw(ctx, detail, x + 28, y + 18, Paint.ink(0.5f * alpha));
+		return y + 30;
+	}
+
+	private int friends(Gfx ctx, int x, int y, int mouseX, int mouseY, float alpha) {
+		if (!Api.signedIn()) {
+			Type.UI.draw(ctx, "Start Minecraft from the Oppa launcher to use friends.", x, y + 6, Paint.ink(0.6f * alpha));
+			return y + ROW * 2;
+		}
+		int right = x + column();
+		int fieldW = column() - Type.UI.width("Search") - 26;
+		field(ctx, "search", "Look up a player", search, x, y, fieldW, mouseX, mouseY, alpha);
+		chip(ctx, "Search", right, y + 3, mouseX, mouseY, alpha, true, click -> {
+			if (fieldKey != null) commitField();
+			else lookup();
+		});
+		y += ROW + 6;
+		if (searching) {
+			Type.UI.draw(ctx, "Looking up " + search + "…", x, y + 6, Paint.ink(0.5f * alpha));
+			y += ROW;
+		} else if (foundProblem != null) {
+			Type.UI.draw(ctx, foundProblem, x, y + 6, Paint.ink(0.6f * alpha));
+			y += ROW;
+		} else if (found != null) {
+			Social.Found f = found;
+			String detail = !f.oppa() ? "Doesn't use Oppa yet" : f.me() ? "That's you" : f.friend() ? "Already your friend" : f.requested() ? "Request sent" : f.wants() ? "Wants to be friends" : "Uses Oppa";
+			int top = y;
+			y = person(ctx, f.oppa() ? f.uuid() : null, f.name(), detail, x, y, mouseX, mouseY, alpha);
+			if (f.oppa() && !f.me()) {
+				String key = "found:" + f.uuid();
+				if (busy.containsKey(key)) chip(ctx, "…", right, top + 7, mouseX, mouseY, alpha, false, null);
+				else if (f.friend()) {
+					String server = currentServer();
+					if (server != null) chip(ctx, "Invite", right, top + 7, mouseX, mouseY, alpha, true,
+							click -> act(key, Social.invite(f.uuid(), server), "Invited " + f.name()));
+				} else if (!f.requested()) {
+					chip(ctx, f.wants() ? "Accept" : "Add friend", right, top + 7, mouseX, mouseY, alpha, true,
+							click -> act(key, Social.friend("add", f.uuid()), f.wants() ? "You and " + f.name() + " are friends" : "Sent " + f.name() + " a request"));
+				}
+			}
+		}
+
+		Social.State st = Social.state();
+		if (!Social.loaded()) {
+			y = section(ctx, "Friends", x, y, alpha);
+			Type.UI.draw(ctx, Social.problem() != null ? Social.problem() : "Loading…", x, y + 6, Paint.ink(0.5f * alpha));
+			return y + ROW;
+		}
+		String here = currentServer();
+		if (!st.invites().isEmpty()) {
+			y = section(ctx, "Invites", x, y, alpha);
+			for (Social.Invite inv : st.invites()) {
+				int top = y;
+				y = person(ctx, inv.uuid(), inv.name(), "Invited you to " + inv.server(), x, y, mouseX, mouseY, alpha);
+				if (!inv.server().equalsIgnoreCase(here == null ? "" : here)) {
+					chip(ctx, "Join", right, top + 7, mouseX, mouseY, alpha, true, click -> Platform.join(inv.server()));
+				}
+			}
+		}
+		if (!st.incoming().isEmpty()) {
+			y = section(ctx, "Requests", x, y, alpha);
+			for (Social.Person p : st.incoming()) {
+				int top = y;
+				y = person(ctx, p.uuid(), p.name(), "Wants to be friends", x, y, mouseX, mouseY, alpha);
+				String key = "req:" + p.uuid();
+				if (busy.containsKey(key)) {
+					chip(ctx, "…", right, top + 7, mouseX, mouseY, alpha, false, null);
+				} else {
+					int next = chip(ctx, "Accept", right, top + 7, mouseX, mouseY, alpha, true, click -> act(key, Social.friend("accept", p.uuid()), "You and " + p.name() + " are friends"));
+					chip(ctx, "Decline", next, top + 7, mouseX, mouseY, alpha, false, click -> act(key, Social.friend("decline", p.uuid()), null));
+				}
+			}
+		}
+		y = section(ctx, st.friends().isEmpty() ? "No friends yet" : "Friends", x, y, alpha);
+		if (st.friends().isEmpty()) {
+			Type.SMALL.draw(ctx, "Look up someone who plays with Oppa and add them.", x, y + 6, Paint.ink(0.5f * alpha));
+			y += ROW;
+		}
+		for (Social.Friend f : st.friends()) {
+			int top = y;
+			String key = "friend:" + f.uuid();
+			boolean removing = armedFor(key);
+			y = person(ctx, f.uuid(), f.name(), removing ? "Right-click again to remove" : f.describe(), x, y, mouseX, mouseY, alpha * (f.online() ? 1f : 0.6f));
+			hits.add(new Hit(x - 8, top, column() + 16, 30, true, true, false, click -> {
+				if (click.secondary() && arm(key)) act(key, Social.friend("remove", f.uuid()), "Removed " + f.name());
+			}));
+			if (inside(mouseX, mouseY, x - 8, top, column() + 16, 30)) hint = "Right-click to remove.";
+			if (busy.containsKey(key)) {
+				chip(ctx, "…", right, top + 7, mouseX, mouseY, alpha, false, null);
+				continue;
+			}
+			int next = right;
+			if (f.joinable() && !f.server().equalsIgnoreCase(here == null ? "" : here)) {
+				next = chip(ctx, "Join", next, top + 7, mouseX, mouseY, alpha, true, click -> Platform.join(f.server()));
+			}
+			if (here != null && f.online() && !here.equalsIgnoreCase(f.server())) {
+				chip(ctx, "Invite", next, top + 7, mouseX, mouseY, alpha, false, click -> act(key, Social.invite(f.uuid(), here), "Invited " + f.name()));
+			}
+		}
+		if (!st.outgoing().isEmpty()) {
+			y = section(ctx, "Sent", x, y, alpha);
+			for (Social.Person p : st.outgoing()) {
+				int top = y;
+				y = person(ctx, p.uuid(), p.name(), "Waiting for them to accept", x, y, mouseX, mouseY, alpha);
+				String key = "sent:" + p.uuid();
+				if (!busy.containsKey(key)) chip(ctx, "Cancel", right, top + 7, mouseX, mouseY, alpha, false, click -> act(key, Social.friend("cancel", p.uuid()), null));
+			}
+		}
+		return y + 8;
+	}
+
+	private static List<String> names(Catalog.Item[] items) {
+		List<String> out = new ArrayList<>();
+		out.add("None");
+		for (Catalog.Item i : items) out.add(i.name());
+		return out;
+	}
+
+	private int lookRow(Gfx ctx, String key, String label, Catalog.Item[] items, Look look, Consumer<Look> set, int x, int y, int mouseX, int mouseY, float alpha) {
+		int picked = look.none() ? 0 : Catalog.index(items, look.style()) + 1;
+		choice(ctx, label, null, x, y, mouseX, mouseY, alpha, names(items), picked, i -> {
+			if (i == 0) set.accept(Look.NONE);
+			else {
+				Catalog.Item item = items[i - 1];
+				set.accept(look.none() ? new Look(item.id(), item.primary(), item.secondary()) : new Look(item.id(), look.primary(), look.secondary()));
+			}
+		});
+		y += ROW;
+		if (look.none()) return y;
+		Catalog.Item item = Catalog.find(items, look.style());
+		y = color(ctx, key + ".a", item.primaryLabel(), null, x, y, mouseX, mouseY, alpha, look.primary(), item.primary(), c -> set.accept(look.primary(c)));
+		y = color(ctx, key + ".b", item.secondaryLabel(), null, x, y, mouseX, mouseY, alpha, look.secondary(), item.secondary(), c -> set.accept(look.secondary(c)));
+		if (items == Catalog.HATS) {
+			float lift = look.lift();
+			slider(ctx, "Height", "Moves the hat up or down on your head.", x, y, mouseX, mouseY, alpha, lift, -Look.MAX_LIFT, Look.MAX_LIFT,
+					lift == 0 ? "Default" : String.format(Locale.ROOT, "%+.1f", lift), v -> set.accept(Wardrobe.hat().lift(stepped(v, 0.5f))));
+			y += ROW;
+		}
+		return y;
+	}
+
+	private void capeTile(Gfx ctx, Social.Cape cape, int x, int y, int w, int h, int mouseX, int mouseY, float alpha) {
+		boolean chosen = cape == null ? Wardrobe.cape() == null : Wardrobe.cape() != null && Wardrobe.cape() == cape.id();
+		boolean hover = inside(mouseX, mouseY, x - 3, y - 3, w + 6, h + 6);
+		if (chosen) Paint.round(ctx, x - 3, y - 3, w + 6, h + 6, 6, Paint.ink(0.16f * alpha));
+		else if (hover) Paint.round(ctx, x - 3, y - 3, w + 6, h + 6, 6, Paint.ink(0.07f * alpha));
+		Images.Image img = cape == null ? null : Looks.cape(cape.url());
+		if (cape == null) {
+			Type.SMALL.drawCentered(ctx, "None", x + w / 2, y + h / 2 - 4, Paint.ink(0.55f * alpha));
+		} else if (img == null) {
+			Paint.round(ctx, x, y, w, h, 3, Paint.ink(0.08f * alpha));
+		} else {
+			Canvas c = Canvas.flat().alpha(alpha * (cape.state().equals("rejected") ? 0.35f : 1f));
+			int s = img.width() / 64;
+			float cw = w / 10f, chh = h / 16f;
+			for (int j = 0; j < 16; j++) for (int i = 0; i < 10; i++) {
+				int px = img.at((1 + i) * s + s / 2, (1 + j) * s + s / 2);
+				c.rect(x + i * cw, y + j * chh, x + (i + 1) * cw, y + (j + 1) * chh, px | 0xFF000000);
+			}
+			ctx.canvas(c, x, y, w, h);
+		}
+		if (cape != null && !cape.state().equals("approved")) {
+			String tag = armedFor("cape:" + cape.id()) ? "Delete?" : cape.state().equals("rejected") ? "Rejected" : "In review";
+			Type.SMALL.drawCentered(ctx, tag, x + w / 2, y + h + 5, Paint.ink(0.5f * alpha));
+		} else if (cape != null && armedFor("cape:" + cape.id())) {
+			Type.SMALL.drawCentered(ctx, "Delete?", x + w / 2, y + h + 5, Paint.ink(0.8f * alpha));
+		}
+		hits.add(new Hit(x - 3, y - 3, w + 6, h + 6, true, true, false, click -> {
+			if (click.secondary()) {
+				if (cape != null && arm("cape:" + cape.id())) Wardrobe.delete(cape);
+				return;
+			}
+			if (cape == null) Wardrobe.cape(null);
+			else if (!cape.state().equals("rejected")) Wardrobe.cape(cape.id());
+		}));
+		if (hover && cape != null) hint = "Right-click to delete.";
+	}
+
+	private void wardrobeStage(Gfx ctx, int sx, int sy, int sw, int sh, int mouseX, int mouseY, float alpha, boolean scrolls) {
+		Paint.round(ctx, sx, sy, sw, sh, 12, Paint.ink(0.04f * alpha));
+		java.util.UUID me = client.getSession().getUuidOrNull();
+		Skins.Skin skin = Skins.get(me == null ? null : me.toString());
+		if (skin != null) stage.skin(skin.image(), skin.slim());
+		else if (Skins.failed(me == null ? null : me.toString())) stage.skin(dev.oppaclient.Cosmetics.defaultSkin(), false);
+		Social.Cape cape = Wardrobe.capeEntry();
+		stage.cape(cape == null ? null : Looks.cape(cape.url()));
+		stage.draw(ctx, sx, sy + 6, sw, sh - 12, Wardrobe.hat(), Wardrobe.wings(), Wardrobe.aura(), cape != null, (float) now, alpha);
+		if (skin == null && !Skins.failed(me == null ? null : me.toString())) Type.SMALL.drawCentered(ctx, "Loading your skin…", sx + sw / 2, sy + sh - 16, Paint.ink(0.45f * alpha));
+		if (inside(mouseX, mouseY, sx, sy, sw, sh)) hint = "Drag to turn around.";
+		hits.add(new Hit(sx, sy, sw, sh, scrolls, click -> {
+			stageLast = click.x();
+			dragging = (mx, my) -> {
+				stage.turn((float) (mx - stageLast));
+				stageLast = mx;
+			};
+		}));
+	}
+
+	private int cosmetics(Gfx ctx, int x, int y, int mouseX, int mouseY, float alpha) {
+		int side = (width - column()) / 2 - 36;
+		if (side >= 130) {
+			int sw = Math.min(200, side), sh = Math.min(height - TOP - 30, Math.round(sw * 1.35f));
+			wardrobeStage(ctx, (width + column()) / 2 + 24, TOP + 12, sw, sh, mouseX, mouseY, alpha, false);
+		} else {
+			wardrobeStage(ctx, x, y, column(), 170, mouseX, mouseY, alpha, true);
+			y += 180;
+		}
+		if (!Api.signedIn()) {
+			Type.SMALL.draw(ctx, "Start Minecraft from the Oppa launcher to save cosmetics.", x, y + 6, Paint.ink(0.6f * alpha));
+			y += ROW;
+		}
+		y = section(ctx, "Cape", x, y, alpha);
+		row(ctx, x, y, mouseX, mouseY, alpha, "Or drop an image onto this window.", click -> Picker.image("Choose an image for your cape", Wardrobe::upload));
+		label(ctx, Wardrobe.uploading() ? "Making your cape…" : "Use an image…", x, y, alpha);
+		Type.UI.drawRight(ctx, "›", x + column(), y + 6, Paint.ink(0.3f * alpha));
+		y += ROW;
+		if (Wardrobe.status() != null) {
+			Type.SMALL.draw(ctx, Wardrobe.status(), x, y + 4, Paint.ink(0.55f * alpha));
+			y += 16;
+		}
+		List<Social.Cape> capes = Social.state().capes();
+		int tw = 24, th = 38, gap = 14, perRow = Math.max(1, (column() + gap) / (tw + gap));
+		int cy = y + 6;
+		for (int i = 0; i <= capes.size(); i++) {
+			int col = i % perRow, rowN = i / perRow;
+			capeTile(ctx, i == 0 ? null : capes.get(i - 1), x + col * (tw + gap), cy + rowN * (th + 20), tw, th, mouseX, mouseY, alpha);
+		}
+		y = cy + ((capes.size()) / perRow + 1) * (th + 20);
+
+		y = section(ctx, "Hat", x, y, alpha);
+		y = lookRow(ctx, "hat", "Style", Catalog.HATS, Wardrobe.hat(), Wardrobe::hat, x, y, mouseX, mouseY, alpha);
+		y = section(ctx, "Wings", x, y, alpha);
+		y = lookRow(ctx, "wings", "Style", Catalog.WINGS, Wardrobe.wings(), Wardrobe::wings, x, y, mouseX, mouseY, alpha);
+		y = section(ctx, "Aura", x, y, alpha);
+		y = lookRow(ctx, "aura", "Style", Catalog.AURAS, Wardrobe.aura(), Wardrobe::aura, x, y, mouseX, mouseY, alpha);
+		return y + ROW;
+	}
+
+	@Override
+	protected void dropped(List<java.nio.file.Path> paths) {
+		if (paths.isEmpty()) return;
+		if (tab != COSMETICS) switchTab(COSMETICS);
+		Wardrobe.upload(paths.getFirst());
+	}
+
 	private int hudList(Gfx ctx, int x, int y, int mouseX, int mouseY, float alpha) {
 		for (Element e : Hud.ELEMENTS) {
 			Config.Placement p = e.placement();
@@ -497,8 +875,6 @@ public final class MenuScreen extends BaseScreen {
 		y += ROW;
 		link(ctx, "freelook", "Free look", x, y, mouseX, mouseY, alpha, () -> cfg.freelook, v -> cfg.freelook = v, () -> openDetail(FREELOOK));
 		y += ROW;
-		link(ctx, "crosshair", "Crosshair", x, y, mouseX, mouseY, alpha, () -> cfg.crosshair, v -> cfg.crosshair = v, () -> openDetail(CROSSHAIR));
-		y += ROW;
 		toggle(ctx, "fullbright", "Fullbright", null, x, y, mouseX, mouseY, alpha, () -> cfg.fullbright, v -> cfg.fullbright = v);
 		y += ROW;
 		toggle(ctx, "nametag", "Own nametag", "Shows your name above you in third person.", x, y, mouseX, mouseY, alpha,
@@ -507,8 +883,8 @@ public final class MenuScreen extends BaseScreen {
 		toggle(ctx, "badges", "Oppa badges", "Shows the Oppa logo next to other players using Oppa.", x, y, mouseX, mouseY, alpha,
 				() -> cfg.badges, v -> cfg.badges = v);
 		y += ROW;
-		slider(ctx, "Low fire", "Lowers the fire overlay so you can see while burning.", x, y, mouseX, mouseY, alpha,
-				cfg.lowFire, 0, 1, cfg.lowFire == 0 ? "Off" : Math.round(cfg.lowFire * 100) + "%", v -> cfg.lowFire = stepped(v, 0.05f));
+		toggle(ctx, "cosmetics", "Other players' cosmetics", "Shows the capes, hats, wings and auras other Oppa players wear.", x, y, mouseX, mouseY, alpha,
+				() -> cfg.cosmetics, v -> cfg.cosmetics = v);
 		y += ROW;
 		List<String> times = List.of("Off", "Day", "Sunset", "Night");
 		choice(ctx, "Time", "Only changes what you see. Everyone else keeps the real time.", x, y, mouseX, mouseY, alpha,
@@ -516,6 +892,45 @@ public final class MenuScreen extends BaseScreen {
 		y += ROW;
 		toggle(ctx, "weather", "Clear weather", "Hides rain and storms on your screen only.", x, y, mouseX, mouseY, alpha,
 				() -> cfg.clearWeather, v -> cfg.clearWeather = v);
+		return y + ROW;
+	}
+
+	private int pvp(Gfx ctx, int x, int y, int mouseX, int mouseY, float alpha) {
+		Config cfg = Config.get();
+		y = section(ctx, "HUD", x, y, alpha);
+		for (String id : List.of("keys", "cps", "reach", "combo", "armor", "items")) {
+			for (Element e : Hud.ELEMENTS) {
+				if (!e.id.equals(id)) continue;
+				Config.Placement p = e.placement();
+				link(ctx, "hud." + e.id, e.label, x, y, mouseX, mouseY, alpha, () -> p.enabled, v -> p.enabled = v, () -> openDetail(e));
+				y += ROW;
+			}
+		}
+		y = section(ctx, "Movement", x, y, alpha);
+		toggle(ctx, "pvp.sprint", "Toggle sprint", "Press sprint once instead of holding it.", x, y, mouseX, mouseY, alpha,
+				() -> client.options.getSprintToggled().getValue(), v -> {
+					client.options.getSprintToggled().setValue(v);
+					client.options.write();
+				});
+		y += ROW;
+		toggle(ctx, "pvp.sneak", "Toggle sneak", "Press sneak once instead of holding it.", x, y, mouseX, mouseY, alpha,
+				() -> client.options.getSneakToggled().getValue(), v -> {
+					client.options.getSneakToggled().setValue(v);
+					client.options.write();
+				});
+		y += ROW;
+		y = section(ctx, "Screen", x, y, alpha);
+		link(ctx, "crosshair", "Crosshair", x, y, mouseX, mouseY, alpha, () -> cfg.crosshair, v -> cfg.crosshair = v, () -> openDetail(CROSSHAIR));
+		y += ROW;
+		slider(ctx, "Low fire", "Lowers the fire overlay so you can see while burning.", x, y, mouseX, mouseY, alpha,
+				cfg.lowFire, 0, 1, cfg.lowFire == 0 ? "Off" : Math.round(cfg.lowFire * 100) + "%", v -> cfg.lowFire = stepped(v, 0.05f));
+		y += ROW;
+		double tiltNow = client.options.getDamageTiltStrength().getValue();
+		slider(ctx, "Damage tilt", "How much the camera shakes when you get hit.", x, y, mouseX, mouseY, alpha,
+				(float) tiltNow, 0, 1, tiltNow == 0 ? "Off" : Math.round(tiltNow * 100) + "%", v -> {
+					client.options.getDamageTiltStrength().setValue((double) stepped(v, 0.05f));
+					client.options.write();
+				});
 		return y + ROW;
 	}
 
@@ -718,6 +1133,7 @@ public final class MenuScreen extends BaseScreen {
 			}
 		}
 		commitHex();
+		commitField();
 		rebinding = null;
 		return false;
 	}
@@ -749,6 +1165,12 @@ public final class MenuScreen extends BaseScreen {
 
 	@Override
 	protected boolean typed(int codepoint) {
+		if (fieldKey != null) {
+			if (fieldBuffer.length() < 16 && (Character.isLetterOrDigit(codepoint) || codepoint == '_') && codepoint < 128) {
+				fieldBuffer += Character.toString(codepoint);
+			}
+			return true;
+		}
 		if (editingHex == null) return false;
 		if (Character.digit(codepoint, 16) >= 0 && hexBuffer.length() < 6) {
 			hexBuffer += Character.toString(codepoint).toUpperCase(Locale.ROOT);
@@ -758,6 +1180,19 @@ public final class MenuScreen extends BaseScreen {
 
 	@Override
 	protected boolean key(int key, int scancode, int modifiers) {
+		if (fieldKey != null) {
+			if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+				commitField();
+			} else if (key == GLFW.GLFW_KEY_ESCAPE) {
+				fieldKey = null;
+			} else if (key == GLFW.GLFW_KEY_BACKSPACE) {
+				if (!fieldBuffer.isEmpty()) fieldBuffer = fieldBuffer.substring(0, fieldBuffer.length() - 1);
+			} else if (key == GLFW.GLFW_KEY_V && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0) {
+				String pasted = client.keyboard.getClipboard().replaceAll("[^A-Za-z0-9_]", "");
+				fieldBuffer = pasted.length() > 16 ? pasted.substring(0, 16) : pasted;
+			}
+			return true;
+		}
 		if (editingHex != null) {
 			if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
 				commitHex();
@@ -803,6 +1238,7 @@ public final class MenuScreen extends BaseScreen {
 	@Override
 	public void removed() {
 		commitHex();
+		fieldKey = null;
 		Config.get().save();
 		OverlayConfig.save();
 	}

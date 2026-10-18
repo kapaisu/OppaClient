@@ -37,12 +37,15 @@ pub fn place(inst: &Instance) -> anyhow::Result<bool> {
     Ok(true)
 }
 
-const PERFORMANCE: [(&str, &str, &str); 5] = [
+const PERFORMANCE: [(&str, &str, &str); 8] = [
     ("AANobbMI", "sodium", "Sodium"),
     ("gvQqBUqZ", "lithium", "Lithium"),
     ("uXXizFIs", "ferritecore", "FerriteCore"),
     ("5ZwdcRci", "immediatelyfast", "ImmediatelyFast"),
     ("NNAgCjsB", "entityculling", "Entity Culling"),
+    ("nmDcB62a", "modernfix", "ModernFix"),
+    ("g96Z4WVZ", "badoptimizations", "BadOptimizations"),
+    ("51shyZVL", "moreculling", "MoreCulling"),
 ];
 
 pub async fn ensure(inst: &Instance) -> anyhow::Result<()> {

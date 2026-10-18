@@ -427,6 +427,154 @@ pub fn new_instance(app: &Rc<App>) {
     ));
 }
 
+pub fn change_version(app: &Rc<App>) {
+    let Some(inst) = app.current() else { return };
+    let versions = gtk::StringList::new(&[]);
+    let version = adw::ComboRow::builder().title("Version").model(&versions).enable_search(true).sensitive(false).build();
+    version.set_expression(Some(gtk::PropertyExpression::new(gtk::StringObject::static_type(), gtk::Expression::NONE, "string")));
+    let name = adw::EntryRow::builder().title("Name").build();
+    let group = adw::PreferencesGroup::builder()
+        .description("Makes a new instance on that version with your settings, servers, packs and mods. This one stays as it is.")
+        .build();
+    group.add(&version);
+    group.add(&name);
+    let note = gtk::Label::builder().wrap(true).xalign(0.0).css_classes(["dim-label", "caption"]).margin_top(12).visible(false).build();
+    note.connect_label_notify(|l| l.set_visible(!l.label().is_empty()));
+    let body = gtk::Box::builder().orientation(gtk::Orientation::Vertical).margin_top(6).margin_bottom(24).margin_start(18).margin_end(18).build();
+    body.append(&group);
+    body.append(&note);
+
+    let go = gtk::Button::builder().label("Change").css_classes(["suggested-action"]).sensitive(false).build();
+    let cancel = gtk::Button::builder().label("Cancel").build();
+    let header = adw::HeaderBar::builder().show_end_title_buttons(false).show_start_title_buttons(false).build();
+    header.pack_start(&cancel);
+    header.pack_end(&go);
+    let toolbar = adw::ToolbarView::builder().content(&body).build();
+    toolbar.add_top_bar(&header);
+    let dialog = adw::Dialog::builder().title("Change Version").content_width(440).child(&toolbar).default_widget(&go).build();
+    dialog.present(Some(&app.window));
+    cancel.connect_clicked(glib::clone!(
+        #[weak]
+        dialog,
+        move |_| {
+            dialog.close();
+        }
+    ));
+
+    let order: Rc<RefCell<Vec<String>>> = Default::default();
+    let current = inst.game_version.clone();
+    let base = inst.name.clone();
+    version.connect_selected_item_notify(glib::clone!(
+        #[weak]
+        name,
+        move |row| {
+            if let Some(v) = row.selected_item().and_downcast::<gtk::StringObject>() {
+                let v = v.string();
+                name.set_text(&if base.contains(current.as_str()) { base.replace(current.as_str(), &v) } else { format!("{base} {v}") });
+            }
+        }
+    ));
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        versions,
+        #[weak]
+        version,
+        #[weak]
+        go,
+        #[weak]
+        note,
+        #[strong]
+        order,
+        #[strong(rename_to = current)]
+        inst.game_version,
+        async move {
+            match net::bg(game::manifest()).await {
+                Ok(m) => {
+                    let ids: Vec<String> = m.versions.iter().filter(|v| v.kind == "release").map(|v| v.id.clone()).collect();
+                    let shown: Vec<&str> = ids.iter().map(String::as_str).filter(|v| *v != current).collect();
+                    versions.splice(0, versions.n_items(), &shown);
+                    *order.borrow_mut() = ids;
+                    version.set_selected(0);
+                    version.set_sensitive(true);
+                    go.set_sensitive(true);
+                }
+                Err(e) => note.set_label(&format!("Couldn't reach Mojang: {e}")),
+            }
+        }
+    ));
+
+    go.connect_clicked(glib::clone!(
+        #[weak]
+        app,
+        #[weak]
+        dialog,
+        #[weak]
+        version,
+        #[weak]
+        name,
+        #[weak]
+        note,
+        move |go| {
+            let Some(target) = version.selected_item().and_downcast::<gtk::StringObject>().map(|s| s.string().to_string()) else { return };
+            let ids = order.borrow();
+            let pos = |v: &str| ids.iter().position(|i| i == v).unwrap_or(usize::MAX);
+            let upgrade = pos(&target) < pos(&inst.game_version);
+            drop(ids);
+            let title = name.text().trim().to_string();
+            let title = if title.is_empty() { target.clone() } else { title };
+            go.set_sensitive(false);
+            let (go, old) = (go.clone(), inst.clone());
+            glib::spawn_future_local(async move {
+                let kind = old.loader;
+                let gv = target.clone();
+                let loader_version = match net::bg(async move { game::latest_loader(kind, &gv).await }).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        note.set_label(&format!("Couldn't reach {}: {e}", kind.label()));
+                        go.set_sensitive(true);
+                        return;
+                    }
+                };
+                if kind != Loader::Vanilla && loader_version.is_none() {
+                    note.set_label(&format!("{} doesn't support {target} yet.", kind.label()));
+                    go.set_sensitive(true);
+                    return;
+                }
+                let mut fresh = Instance::new(&title, &target, kind, loader_version);
+                fresh.memory_mb = old.memory_mb;
+                fresh.jvm_args = old.jvm_args.clone();
+                fresh.performance = old.performance;
+                if let Err(e) = fresh.save() {
+                    note.set_label(&format!("Couldn't create the folder: {e}"));
+                    go.set_sensitive(true);
+                    return;
+                }
+                dialog.close();
+                let made = fresh.clone();
+                let result = net::bg(crate::migrate::carry(old, made, upgrade)).await;
+                app.add_instance(fresh);
+                match result {
+                    Ok(r) if r.missing.is_empty() => app.toast(&format!("Ready on {target} | {} mods carried over", r.moved)),
+                    Ok(r) => {
+                        let list = r.missing.iter().map(|m| glib::markup_escape_text(m).to_string()).collect::<Vec<_>>().join("\n");
+                        let d = adw::AlertDialog::new(
+                            Some(&format!("Ready on {target}")),
+                            Some(&format!("{} mods carried over. These aren't available for {target} yet:\n\n{list}", r.moved)),
+                        );
+                        d.set_body_use_markup(true);
+                        d.add_response("ok", "OK");
+                        d.present(Some(&app.window));
+                    }
+                    Err(e) => app.toast(&format!("Copied what it could: {e}")),
+                }
+                if !upgrade {
+                    app.toast("Worlds stay in the old instance, since older versions can damage them");
+                }
+            });
+        }
+    ));
+}
+
 pub fn instance_settings(app: &Rc<App>) {
     let Some(inst) = app.current() else { return };
 
@@ -453,7 +601,7 @@ pub fn instance_settings(app: &Rc<App>) {
     let args = adw::EntryRow::builder().title("Java arguments").text(&inst.jvm_args).build();
     let performance = adw::SwitchRow::builder()
         .title("Performance")
-        .subtitle("Sodium, Lithium, FerriteCore, ImmediatelyFast and Entity Culling, plus tuned memory settings")
+        .subtitle("Sodium, Lithium, FerriteCore and other speed mods, plus tuned memory settings")
         .active(inst.performance)
         .build();
 

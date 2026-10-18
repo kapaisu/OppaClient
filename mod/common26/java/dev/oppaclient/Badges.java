@@ -3,6 +3,7 @@ package dev.oppaclient;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.oppaclient.look.Looks;
 import dev.oppaclient.platform.Platform;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -24,8 +25,8 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.phys.AABB;
 
 public final class Badges {
-	private static final URI LOOKUP = URI.create("https://oppaclient.com/api/users.php");
-	private static final long RECHECK = 60_000;
+	private static final URI LOOKUP = URI.create(dev.oppaclient.social.Api.url("users.php"));
+	private static final long RECHECK = 10_000;
 	private static final int BATCH = 100;
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
@@ -78,7 +79,7 @@ public final class Badges {
 
 	public static void tick(Minecraft mc) {
 		findStands(mc);
-		if (++ticks % 40 != 0 || busy || mc.level == null || !Config.get().badges) return;
+		if (++ticks % 40 != 0 || busy || mc.level == null || !(Config.get().badges || Config.get().cosmetics)) return;
 		long now = System.currentTimeMillis();
 		List<UUID> due = new ArrayList<>();
 		for (AbstractClientPlayer p : mc.level.players()) {
@@ -110,10 +111,14 @@ public final class Badges {
 			if (err != null || res.statusCode() != 200) return;
 			try {
 				Set<String> yes = new HashSet<>();
-				for (var e : JsonParser.parseString(res.body()).getAsJsonObject().getAsJsonArray("online")) yes.add(e.getAsString());
+				JsonObject json = JsonParser.parseString(res.body()).getAsJsonObject();
+				for (var e : json.getAsJsonArray("online")) yes.add(e.getAsString());
+				JsonObject looks = json.has("looks") && json.get("looks").isJsonObject() ? json.getAsJsonObject("looks") : new JsonObject();
 				for (UUID id : ids) {
-					if (yes.contains(id.toString().replace("-", ""))) online.add(id);
+					String key = id.toString().replace("-", "");
+					if (yes.contains(key)) online.add(id);
 					else online.remove(id);
+					Looks.accept(id, looks.get(key));
 				}
 			} catch (RuntimeException e) {
 				OppaClient.LOG.debug("badge lookup: {}", e.toString());

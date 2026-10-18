@@ -698,9 +698,13 @@ pub async fn prepare(inst: &Instance, who: Account<'_>, job: &Job) -> anyhow::Re
                 "-XX:InitiatingHeapOccupancyPercent=20",
                 "-XX:G1MixedGCCountTarget=3",
                 "-XX:+PerfDisableSharedMem",
+                "-XX:+UseStringDeduplication",
             ]
             .map(String::from),
         );
+        if want >= 25 && inst.java.is_none() {
+            jvm_args.push("-XX:+UseCompactObjectHeaders".into());
+        }
     }
     jvm_args.extend(inst.jvm_args.split_whitespace().map(str::to_string));
     let mut game_args: Vec<String> = Vec::new();

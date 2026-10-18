@@ -262,7 +262,7 @@ final class Readouts {
 
 	static final class Coords extends Element {
 		Coords() {
-			super("coords", "Coordinates", true, 0, 0, 6, 20);
+			super("coords", "Coordinates", false, 0, 0, 6, 20);
 		}
 
 		@Override
@@ -339,6 +339,99 @@ final class Readouts {
 			}
 			String f = footer(mc);
 			if (!f.isEmpty()) text(ctx, Type.SMALL, f, 0, 12, 0.55f);
+		}
+	}
+
+	static final class Reach extends Line {
+		Reach() {
+			super("reach", "Reach", false, 0, 0, 6, 90);
+		}
+
+		@Override
+		public boolean idle(MinecraftClient mc) {
+			return !Combat.recentReach();
+		}
+
+		String value(MinecraftClient mc) {
+			return String.format("%.2f", Combat.recentReach() ? Combat.reach() : 3.0);
+		}
+
+		String unit() {
+			return "blocks";
+		}
+	}
+
+	static final class Combo extends Line {
+		Combo() {
+			super("combo", "Combo", false, 0, 0, 6, 104);
+		}
+
+		@Override
+		public boolean idle(MinecraftClient mc) {
+			return Combat.combo() < 2;
+		}
+
+		String value(MinecraftClient mc) {
+			return Integer.toString(Math.max(2, Combat.combo()));
+		}
+
+		String unit() {
+			return "combo";
+		}
+	}
+
+	static final class Items extends Element {
+		private static final List<String> KINDS = List.of("Totems", "Arrows", "Pearls", "Golden apples");
+		private long frame = -1;
+		private int count;
+
+		Items() {
+			super("items", "Item counter", false, 1, 1, -6, -40);
+		}
+
+		@Override
+		public List<Option> options() {
+			return List.of(new Choice("kind", "Count", KINDS));
+		}
+
+		private net.minecraft.item.Item[] kinds() {
+			return switch (pick("kind")) {
+				case "Arrows" -> new net.minecraft.item.Item[] {net.minecraft.item.Items.ARROW, net.minecraft.item.Items.SPECTRAL_ARROW, net.minecraft.item.Items.TIPPED_ARROW};
+				case "Pearls" -> new net.minecraft.item.Item[] {net.minecraft.item.Items.ENDER_PEARL};
+				case "Golden apples" -> new net.minecraft.item.Item[] {net.minecraft.item.Items.GOLDEN_APPLE, net.minecraft.item.Items.ENCHANTED_GOLDEN_APPLE};
+				default -> new net.minecraft.item.Item[] {net.minecraft.item.Items.TOTEM_OF_UNDYING};
+			};
+		}
+
+		private int count(MinecraftClient mc) {
+			if (frame == Hud.frame()) return count;
+			frame = Hud.frame();
+			count = 0;
+			if (mc.player == null) return count;
+			net.minecraft.item.Item[] kinds = kinds();
+			net.minecraft.entity.player.PlayerInventory inv = mc.player.getInventory();
+			for (int i = 0; i < inv.size(); i++) {
+				net.minecraft.item.ItemStack s = inv.getStack(i);
+				for (net.minecraft.item.Item k : kinds) if (s.isOf(k)) count += s.getCount();
+			}
+			return count;
+		}
+
+		@Override
+		public int width(MinecraftClient mc, boolean preview) {
+			return 20 + Type.STRONG.width(Integer.toString(preview && count(mc) == 0 ? 2 : count(mc)));
+		}
+
+		@Override
+		public int height(MinecraftClient mc, boolean preview) {
+			return 16;
+		}
+
+		@Override
+		public void draw(Gfx ctx, MinecraftClient mc, boolean preview) {
+			int n = preview && count(mc) == 0 ? 2 : count(mc);
+			ctx.item(new net.minecraft.item.ItemStack(kinds()[0]), 0, 0);
+			text(ctx, Type.STRONG, Integer.toString(n), 20, 4, n == 0 ? 0.5f : 0.95f);
 		}
 	}
 }

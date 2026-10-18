@@ -54,8 +54,20 @@ pub fn open(app: &Rc<App>) {
         window::save_settings(&s);
         crate::discord::enable(row.is_active());
     });
-    let social = adw::PreferencesGroup::builder().title("Discord").build();
+    let social = adw::PreferencesGroup::builder().title("Sharing").build();
     social.add(&discord);
+    let share = adw::SwitchRow::builder()
+        .title("Let friends see your server")
+        .subtitle("So they can join you")
+        .active(s.share_server.unwrap_or(true))
+        .build();
+    share.connect_active_notify(|row| {
+        let mut s = window::settings();
+        s.share_server = Some(row.is_active());
+        window::save_settings(&s);
+    });
+    social.add(&share);
+
 
     let page = adw::PreferencesPage::new();
     page.add(&group);
