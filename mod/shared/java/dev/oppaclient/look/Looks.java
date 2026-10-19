@@ -19,7 +19,8 @@ public final class Looks {
 
 	private static final Map<UUID, Worn> others = new ConcurrentHashMap<>();
 	private static final Map<String, Images.Image> capes = new ConcurrentHashMap<>();
-	private static final Map<String, Boolean> loading = new ConcurrentHashMap<>();
+	private static final Map<String, Long> loading = new ConcurrentHashMap<>();
+	private static final long RETRY = 15_000;
 
 	private Looks() {}
 
@@ -51,13 +52,16 @@ public final class Looks {
 	public static Images.Image cape(String url) {
 		if (url == null) return null;
 		Images.Image img = capes.get(url);
-		if (img != null || loading.putIfAbsent(url, true) != null) return img;
+		if (img != null) return img;
+		long now = System.currentTimeMillis();
+		Long started = loading.get(url);
+		if (started != null && now - started < RETRY) return null;
+		loading.put(url, now);
 		Api.bytes(url).whenComplete((bytes, err) -> {
-			if (err == null) {
-				try {
-					capes.put(url, Images.decode(bytes));
-				} catch (RuntimeException ignored) {
-				}
+			if (err != null) return;
+			try {
+				capes.put(url, Images.decode(bytes));
+			} catch (RuntimeException ignored) {
 			}
 		});
 		return null;
@@ -65,6 +69,6 @@ public final class Looks {
 
 	public static void remember(String url, Images.Image img) {
 		capes.put(url, img);
-		loading.put(url, true);
+		loading.put(url, System.currentTimeMillis());
 	}
 }

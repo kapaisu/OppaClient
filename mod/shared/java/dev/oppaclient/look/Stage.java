@@ -29,6 +29,10 @@ public final class Stage {
 		capeBuilt = false;
 	}
 
+	public void face(float radians) {
+		yawTarget = radians;
+	}
+
 	public void turn(float dx) {
 		yawTarget += dx * 0.02f;
 	}

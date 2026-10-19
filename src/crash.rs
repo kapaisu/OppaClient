@@ -78,6 +78,14 @@ pub fn find(inst: &Instance, since: i64) -> Option<Report> {
     if path.ends_with("latest.log") {
         text = tail(&text, 400);
     }
+    let text = text
+        .lines()
+        .map(|l| match l.find("oppa-token ") {
+            Some(at) => format!("{}oppa-token [hidden]", &l[..at]),
+            None => l.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     let summary = summarize(&text);
     Some(Report { path, text, summary })
 }

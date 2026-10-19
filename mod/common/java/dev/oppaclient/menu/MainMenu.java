@@ -38,6 +38,7 @@ public final class MainMenu extends BaseScreen {
 			add("Mods", this::openModMenu);
 		}
 		add("Oppa", () -> client.setScreen(new MenuScreen()));
+		add("Account", () -> client.setScreen(new AccountScreen(this, 0)));
 		add("Options", () -> client.setScreen(new OptionsScreen(this, client.options)));
 		add("Quit", client::scheduleStop);
 	}

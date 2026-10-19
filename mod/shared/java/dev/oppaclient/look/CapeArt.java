@@ -5,19 +5,9 @@ public final class CapeArt {
 
 	private CapeArt() {}
 
-	public static Images.Image compose(Images.Image src) {
+	public static Images.Image compose(Images.Image src, int cx, int cy, int cw, int ch) {
 		int s = SCALE, w = 64 * s, h = 32 * s;
 		int[] px = new int[w * h];
-		float aspect = 10f / 16f;
-		int cw = src.width(), ch = src.height();
-		int cx = 0, cy = 0;
-		if ((float) cw / ch > aspect) {
-			cw = Math.round(ch * aspect);
-			cx = (src.width() - cw) / 2;
-		} else {
-			ch = Math.round(cw / aspect);
-			cy = (src.height() - ch) / 2;
-		}
 		Images.Image front = Images.resample(src, cx, cy, cw, ch, 10 * s, 16 * s);
 		int base = opaqueAverage(front);
 		int edge = Mesh.shade(base, 0.62f) | 0xFF000000;
@@ -25,7 +15,7 @@ public final class CapeArt {
 		fill(px, w, 0, 0, 22 * s, 17 * s, edge);
 		paste(px, w, front, s, s, false);
 		fill(px, w, 12 * s, s, 10 * s, 16 * s, inside);
-		Images.Image wing = Images.resample(src, 0, 0, src.width(), src.height(), 10 * s, 20 * s);
+		Images.Image wing = Images.resample(src, cx, cy, cw, ch, 10 * s, 20 * s);
 		fill(px, w, 22 * s, 0, 24 * s, 22 * s, edge);
 		paste(px, w, wing, 24 * s, 2 * s, false);
 		paste(px, w, wing, 36 * s, 2 * s, true);

@@ -62,12 +62,17 @@ public final class Platform {
 		return player.isGliding();
 	}
 
+	public static void leave() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc.world == null) return;
+		if (mc.isInSingleplayer()) mc.disconnectWithSavingScreen();
+		else mc.disconnectWithProgressScreen();
+		mc.setScreen(new net.minecraft.client.gui.screen.TitleScreen());
+	}
+
 	public static void join(String address) {
 		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.world != null) {
-			if (mc.isInSingleplayer()) mc.disconnectWithSavingScreen();
-			else mc.disconnectWithProgressScreen();
-		}
+		leave();
 		ServerInfo info = new ServerInfo(address, address, ServerInfo.ServerType.OTHER);
 		ConnectScreen.connect(new TitleScreen(), mc, ServerAddress.parse(address), info, false, null);
 	}

@@ -86,12 +86,17 @@ public final class Platform {
 		t.start();
 	}
 
+	public static void leave() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level == null) return;
+		if (mc.hasSingleplayerServer()) mc.disconnectWithSavingScreen();
+		else mc.disconnectWithProgressScreen();
+		show(new net.minecraft.client.gui.screens.TitleScreen());
+	}
+
 	public static void join(String address) {
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.level != null) {
-			if (mc.hasSingleplayerServer()) mc.disconnectWithSavingScreen();
-			else mc.disconnectWithProgressScreen();
-		}
+		leave();
 		net.minecraft.client.multiplayer.ServerData info = new net.minecraft.client.multiplayer.ServerData(address, address, net.minecraft.client.multiplayer.ServerData.Type.OTHER);
 		net.minecraft.client.gui.screens.ConnectScreen.startConnecting(new net.minecraft.client.gui.screens.TitleScreen(), mc,
 				net.minecraft.client.multiplayer.resolver.ServerAddress.parseString(address), info, false, null);

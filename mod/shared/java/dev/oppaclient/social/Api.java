@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
 
 public final class Api {
 	private static final String BASE = base();
-	private static final String TOKEN = System.getenv("OPPA_TOKEN");
+	private static volatile String token = System.getenv("OPPA_TOKEN");
 	private static final HttpClient HTTP = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(8))
 			.followRedirects(HttpClient.Redirect.NORMAL)
@@ -31,8 +31,13 @@ public final class Api {
 		agent = "oppaclient/" + gameVersion;
 	}
 
+	public static void use(String next) {
+		token = next;
+	}
+
 	public static boolean signedIn() {
-		return TOKEN != null && TOKEN.matches("[0-9a-f]{64}");
+		String t = token;
+		return t != null && t.matches("[0-9a-f]{64}");
 	}
 
 	public static String url(String file) {
@@ -43,7 +48,7 @@ public final class Api {
 		HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url(file)))
 				.timeout(Duration.ofSeconds(20))
 				.header("User-Agent", agent);
-		if (signedIn()) b.header("X-Oppa-Token", TOKEN);
+		if (signedIn()) b.header("X-Oppa-Token", token);
 		return b;
 	}
 
@@ -66,7 +71,7 @@ public final class Api {
 
 	public static CompletableFuture<byte[]> bytes(String url) {
 		HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(20)).header("User-Agent", agent);
-		if (signedIn() && url.startsWith(BASE)) b.header("X-Oppa-Token", TOKEN);
+		if (signedIn() && url.startsWith(BASE)) b.header("X-Oppa-Token", token);
 		return HTTP.sendAsync(b.build(), HttpResponse.BodyHandlers.ofByteArray()).thenApply(r -> {
 			if (r.statusCode() != 200) throw new IllegalStateException("HTTP " + r.statusCode());
 			return r.body();

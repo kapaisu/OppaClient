@@ -63,6 +63,12 @@ public final class Draw {
 				pose.transformPosition(p.set(pos[at] / 16f, pos[at + 1] / 16f, pos[at + 2] / 16f));
 				sink.vertex(p.x, p.y, p.z, col[q * 4 + v], 0.5f, 0.5f, overlay, lit, n.x, n.y, n.z);
 			}
+			if (kinds[q] != Mesh.GLOW) continue;
+			for (int v = 3; v >= 0; v--) {
+				int at = q * 12 + v * 3;
+				pose.transformPosition(p.set(pos[at] / 16f, pos[at + 1] / 16f, pos[at + 2] / 16f));
+				sink.vertex(p.x, p.y, p.z, col[q * 4 + v], 0.5f, 0.5f, overlay, lit, -n.x, -n.y, -n.z);
+			}
 		}
 	}
 }

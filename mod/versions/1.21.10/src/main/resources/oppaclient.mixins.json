@@ -19,6 +19,7 @@
 		"MouseMixin",
 		"NametagMixin",
 		"SkinMixin",
+		"SessionAccessor",
 		"WorldWeatherMixin"
 	],
 	"injectors": {

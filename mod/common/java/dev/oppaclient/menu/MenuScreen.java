@@ -14,6 +14,8 @@ import dev.oppaclient.overlay.OverlayConfig;
 import dev.oppaclient.overlay.OverlaySettings;
 import dev.oppaclient.overlay.Preview;
 import dev.oppaclient.Picker;
+import dev.oppaclient.OppaClient;
+import dev.oppaclient.look.CapeEditor;
 import dev.oppaclient.look.Catalog;
 import dev.oppaclient.look.Images;
 import dev.oppaclient.look.Look;
@@ -30,6 +32,7 @@ import dev.oppaclient.platform.Platform;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -46,7 +49,7 @@ public final class MenuScreen extends BaseScreen {
 	private static final int ROW = 20, TOP = 34, COLUMN = 300;
 	private static final String[] TABS = {"HUD", "Visuals", "PvP", "Cosmetics", "Friends", "Settings"};
 	public static final int PVP = 2, COSMETICS = 3, FRIENDS = 4;
-	private static final String OVERLAY = "overlay", ZOOM = "zoom", FREELOOK = "freelook", CROSSHAIR = "crosshair";
+	private static final String OVERLAY = "overlay", ZOOM = "zoom", FREELOOK = "freelook", CROSSHAIR = "crosshair", CAPE = "cape";
 	private static int lastTab;
 
 	private int tab = lastTab;
@@ -107,6 +110,10 @@ public final class MenuScreen extends BaseScreen {
 	private final Stage stage = new Stage();
 	private boolean turningStage;
 	private double stageLast;
+	private CapeEditor editor;
+	private CapeEditor shownPicture;
+	private int viewX, viewY, viewW, viewH;
+	private final double[] panLast = new double[2];
 
 	public MenuScreen() {
 		this(-1);
@@ -162,6 +169,8 @@ public final class MenuScreen extends BaseScreen {
 		int start = y;
 		if (detail instanceof Element e) {
 			y = elementPage(ctx, e, x, y, mouseX, my, alpha);
+		} else if (CAPE.equals(detail) && editor != null) {
+			y = capePage(ctx, x, y, mouseX, my, alpha);
 		} else if (OVERLAY.equals(detail)) {
 			y = overlayPage(ctx, x, y, mouseX, my, alpha);
 		} else if (ZOOM.equals(detail)) {
@@ -673,21 +682,21 @@ public final class MenuScreen extends BaseScreen {
 			String key = "friend:" + f.uuid();
 			boolean removing = armedFor(key);
 			y = person(ctx, f.uuid(), f.name(), removing ? "Right-click again to remove" : f.describe(), x, y, mouseX, mouseY, alpha * (f.online() ? 1f : 0.6f));
-			hits.add(new Hit(x - 8, top, column() + 16, 30, true, true, false, click -> {
-				if (click.secondary() && arm(key)) act(key, Social.friend("remove", f.uuid()), "Removed " + f.name());
-			}));
 			if (inside(mouseX, mouseY, x - 8, top, column() + 16, 30)) hint = "Right-click to remove.";
 			if (busy.containsKey(key)) {
 				chip(ctx, "…", right, top + 7, mouseX, mouseY, alpha, false, null);
-				continue;
+			} else {
+				int next = right;
+				if (f.joinable() && !f.server().equalsIgnoreCase(here == null ? "" : here)) {
+					next = chip(ctx, "Join", next, top + 7, mouseX, mouseY, alpha, true, click -> Platform.join(f.server()));
+				}
+				if (here != null && f.online() && !here.equalsIgnoreCase(f.server())) {
+					chip(ctx, "Invite", next, top + 7, mouseX, mouseY, alpha, false, click -> act(key, Social.invite(f.uuid(), here), "Invited " + f.name()));
+				}
 			}
-			int next = right;
-			if (f.joinable() && !f.server().equalsIgnoreCase(here == null ? "" : here)) {
-				next = chip(ctx, "Join", next, top + 7, mouseX, mouseY, alpha, true, click -> Platform.join(f.server()));
-			}
-			if (here != null && f.online() && !here.equalsIgnoreCase(f.server())) {
-				chip(ctx, "Invite", next, top + 7, mouseX, mouseY, alpha, false, click -> act(key, Social.invite(f.uuid(), here), "Invited " + f.name()));
-			}
+			hits.add(new Hit(x - 8, top, column() + 16, 30, true, true, false, click -> {
+				if (click.secondary() && arm(key)) act(key, Social.friend("remove", f.uuid()), "Removed " + f.name());
+			}));
 		}
 		if (!st.outgoing().isEmpty()) {
 			y = section(ctx, "Sent", x, y, alpha);
@@ -726,6 +735,10 @@ public final class MenuScreen extends BaseScreen {
 			float lift = look.lift();
 			slider(ctx, "Height", "Moves the hat up or down on your head.", x, y, mouseX, mouseY, alpha, lift, -Look.MAX_LIFT, Look.MAX_LIFT,
 					lift == 0 ? "Default" : String.format(Locale.ROOT, "%+.1f", lift), v -> set.accept(Wardrobe.hat().lift(stepped(v, 0.5f))));
+			y += ROW;
+			float glow = look.glow();
+			slider(ctx, "Glow", "How bright the glowing parts shine.", x, y, mouseX, mouseY, alpha, glow, 0, 1,
+					glow == 0 ? "Off" : Math.round(glow * 100) + "%", v -> set.accept(Wardrobe.hat().glow(stepped(v, 0.1f))));
 			y += ROW;
 		}
 		return y;
@@ -769,14 +782,18 @@ public final class MenuScreen extends BaseScreen {
 	}
 
 	private void wardrobeStage(Gfx ctx, int sx, int sy, int sw, int sh, int mouseX, int mouseY, float alpha, boolean scrolls) {
+		Social.Cape worn = Wardrobe.capeEntry();
+		wardrobeStage(ctx, sx, sy, sw, sh, mouseX, mouseY, alpha, scrolls, worn == null ? null : Looks.cape(worn.url()), worn != null);
+	}
+
+	private void wardrobeStage(Gfx ctx, int sx, int sy, int sw, int sh, int mouseX, int mouseY, float alpha, boolean scrolls, Images.Image capeImage, boolean showCape) {
 		Paint.round(ctx, sx, sy, sw, sh, 12, Paint.ink(0.04f * alpha));
 		java.util.UUID me = client.getSession().getUuidOrNull();
 		Skins.Skin skin = Skins.get(me == null ? null : me.toString());
 		if (skin != null) stage.skin(skin.image(), skin.slim());
 		else if (Skins.failed(me == null ? null : me.toString())) stage.skin(dev.oppaclient.Cosmetics.defaultSkin(), false);
-		Social.Cape cape = Wardrobe.capeEntry();
-		stage.cape(cape == null ? null : Looks.cape(cape.url()));
-		stage.draw(ctx, sx, sy + 6, sw, sh - 12, Wardrobe.hat(), Wardrobe.wings(), Wardrobe.aura(), cape != null, (float) now, alpha);
+		stage.cape(capeImage);
+		stage.draw(ctx, sx, sy + 6, sw, sh - 12, Wardrobe.hat(), Wardrobe.wings(), Wardrobe.aura(), showCape, (float) now, alpha);
 		if (skin == null && !Skins.failed(me == null ? null : me.toString())) Type.SMALL.drawCentered(ctx, "Loading your skin…", sx + sw / 2, sy + sh - 16, Paint.ink(0.45f * alpha));
 		if (inside(mouseX, mouseY, sx, sy, sw, sh)) hint = "Drag to turn around.";
 		hits.add(new Hit(sx, sy, sw, sh, scrolls, click -> {
@@ -802,7 +819,7 @@ public final class MenuScreen extends BaseScreen {
 			y += ROW;
 		}
 		y = section(ctx, "Cape", x, y, alpha);
-		row(ctx, x, y, mouseX, mouseY, alpha, "Or drop an image onto this window.", click -> Picker.image("Choose an image for your cape", Wardrobe::upload));
+		row(ctx, x, y, mouseX, mouseY, alpha, "Or drop an image onto this window.", click -> Picker.image("Choose an image for your cape", this::editCape));
 		label(ctx, Wardrobe.uploading() ? "Making your cape…" : "Use an image…", x, y, alpha);
 		Type.UI.drawRight(ctx, "›", x + column(), y + 6, Paint.ink(0.3f * alpha));
 		y += ROW;
@@ -828,11 +845,92 @@ public final class MenuScreen extends BaseScreen {
 		return y + ROW;
 	}
 
+	private void editCape(java.nio.file.Path file) {
+		Wardrobe.open(file, ready -> client.execute(() -> {
+			editor = ready;
+			stage.face((float) Math.toRadians(200));
+			if (tab != COSMETICS) switchTab(COSMETICS);
+			openDetail(CAPE);
+		}));
+	}
+
+	private int capePage(Gfx ctx, int x, int y, int mouseX, int mouseY, float alpha) {
+		y = back(ctx, "Fit your cape", x, y, mouseX, mouseY, alpha);
+		int side = (width - column()) / 2 - 36;
+		boolean beside = side >= 130;
+		if (beside) {
+			int sw = Math.min(200, side), sh = Math.min(height - TOP - 30, Math.round(sw * 1.35f));
+			wardrobeStage(ctx, (width + column()) / 2 + 24, TOP + 12, sw, sh, mouseX, mouseY, alpha, false, editor.cape(), true);
+		}
+		viewX = x;
+		viewY = y;
+		viewW = column();
+		viewH = 220;
+		Paint.round(ctx, viewX, viewY, viewW, viewH, 12, Paint.ink(0.04f * alpha));
+		int frameH = viewH - 24, frameW = Math.round(frameH * CapeEditor.ASPECT);
+		int frameX = viewX + (viewW - frameW) / 2, frameY = viewY + 12;
+		float scale = frameH / editor.cropHeight();
+		Images.Image picture = editor.picture();
+		Identifier texture = OppaClient.id("cape/editor");
+		if (shownPicture != editor) {
+			Platform.upload(texture, picture.width(), picture.height(), picture.argb());
+			shownPicture = editor;
+		}
+		float k = editor.sourceWidth() / picture.width();
+		ctx.scissor(viewX, Math.max(viewY, TOP), viewX + viewW, viewY + viewH);
+		ctx.push();
+		ctx.translate(frameX - editor.left() * scale, frameY - editor.top() * scale);
+		ctx.scale(scale * k, scale * k);
+		ctx.blit(texture, 0, 0, picture.width(), picture.height(), 0, 0, picture.width(), picture.height(), Paint.argb(alpha, 0xFFFFFF));
+		ctx.pop();
+		int dim = Paint.shade(0.62f * alpha);
+		ctx.fill(viewX, viewY, viewX + viewW, frameY, dim);
+		ctx.fill(viewX, frameY + frameH, viewX + viewW, viewY + viewH, dim);
+		ctx.fill(viewX, frameY, frameX, frameY + frameH, dim);
+		ctx.fill(frameX + frameW, frameY, viewX + viewW, frameY + frameH, dim);
+		int edge = Paint.ink(0.7f * alpha);
+		ctx.fill(frameX - 1, frameY - 1, frameX + frameW + 1, frameY, edge);
+		ctx.fill(frameX - 1, frameY + frameH, frameX + frameW + 1, frameY + frameH + 1, edge);
+		ctx.fill(frameX - 1, frameY, frameX, frameY + frameH, edge);
+		ctx.fill(frameX + frameW, frameY, frameX + frameW + 1, frameY + frameH, edge);
+		ctx.endScissor();
+		ctx.scissor(0, TOP, width, height - 16);
+		if (inside(mouseX, mouseY, viewX, viewY, viewW, viewH)) hint = "Drag to move the image. Scroll to zoom.";
+		hits.add(new Hit(viewX, viewY, viewW, viewH, true, click -> {
+			panLast[0] = click.x();
+			panLast[1] = click.y();
+			dragging = (mx, my) -> {
+				editor.drag((float) (mx - panLast[0]), (float) (my - panLast[1]), scale);
+				panLast[0] = mx;
+				panLast[1] = my;
+			};
+		}));
+		y += viewH + 8;
+		slider(ctx, "Zoom", null, x, y, mouseX, mouseY, alpha, editor.zoom(), 1, 8,
+				String.format(Locale.ROOT, "%.1fx", editor.zoom()), v -> editor.zoom(v));
+		y += ROW;
+		if (!beside) {
+			wardrobeStage(ctx, x, y + 6, column(), 170, mouseX, mouseY, alpha, true, editor.cape(), true);
+			y += 182;
+		}
+		y += 8;
+		int next = chip(ctx, Wardrobe.uploading() ? "Uploading…" : "Use this cape", x + column(), y, mouseX, mouseY, alpha, true, Wardrobe.uploading() ? null : click -> {
+			Wardrobe.upload(editor.result());
+			editor = null;
+			closeDetail();
+		});
+		chip(ctx, "Cancel", next, y, mouseX, mouseY, alpha, false, click -> {
+			editor = null;
+			closeDetail();
+		});
+		return y + ROW + 8;
+	}
+
 	@Override
 	protected void dropped(List<java.nio.file.Path> paths) {
 		if (paths.isEmpty()) return;
 		if (tab != COSMETICS) switchTab(COSMETICS);
-		Wardrobe.upload(paths.getFirst());
+		editCape(paths.getFirst());
 	}
 
 	private int hudList(Gfx ctx, int x, int y, int mouseX, int mouseY, float alpha) {
@@ -1074,6 +1172,10 @@ public final class MenuScreen extends BaseScreen {
 
 	private int settings(Gfx ctx, int x, int y, int mouseX, int mouseY, float alpha) {
 		Config cfg = Config.get();
+		row(ctx, x, y, mouseX, mouseY, alpha, "Change your skin or switch Minecraft account.", click -> client.setScreen(new AccountScreen(this, 0)));
+		label(ctx, "Skin and account", x, y, alpha);
+		Type.UI.drawRight(ctx, "›", x + column(), y + 6, Paint.ink(0.3f * alpha));
+		y += ROW + 6;
 		slider(ctx, "HUD scale", null, x, y, mouseX, mouseY, alpha, cfg.scale, 0.5f, 2f,
 				Math.round(cfg.scale * 100) + "%", v -> cfg.scale = stepped(v, 0.05f));
 		y += ROW;
@@ -1158,6 +1260,10 @@ public final class MenuScreen extends BaseScreen {
 
 	@Override
 	protected boolean scrolled(double mouseX, double mouseY, double vertical) {
+		if (CAPE.equals(detail) && editor != null && inside(mouseX, mouseY, viewX, viewY, viewW, viewH)) {
+			editor.zoom(editor.zoom() * (float) Math.pow(1.12, vertical));
+			return true;
+		}
 		int max = Math.max(0, contentHeight - (height - TOP - 24));
 		scroll.to((float) Math.max(0, Math.min(max, scroll.target() - vertical * 28)));
 		return true;

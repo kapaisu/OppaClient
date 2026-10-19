@@ -22,7 +22,7 @@ import java.util.function.Supplier;
 public final class CosmeticsLayer extends RenderLayer<AvatarRenderState, PlayerModel> {
 	private static final RenderType SOLID = RenderTypes.entityCutout(Cosmetics.WHITE);
 	private static final RenderType CLEAR = RenderTypes.entityTranslucent(Cosmetics.WHITE);
-	private static final RenderType GLOW = RenderTypes.eyes(Cosmetics.WHITE);
+	private static final RenderType GLOW = RenderTypes.entityTranslucentEmissive(Cosmetics.WHITE);
 
 	public CosmeticsLayer(RenderLayerParent<AvatarRenderState, PlayerModel> parent) {
 		super(parent);

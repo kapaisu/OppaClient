@@ -57,6 +57,16 @@ public final class Social {
 
 	private Social() {}
 
+	public static synchronized void reset() {
+		state = State.EMPTY;
+		loaded = false;
+		problem = null;
+		first = true;
+		seenInvites.clear();
+		seenRequests.clear();
+		wantSoon = System.currentTimeMillis();
+	}
+
 	public static State state() {
 		return state;
 	}
@@ -96,6 +106,14 @@ public final class Social {
 	private static void announce(State next) {
 		boolean quiet = first;
 		first = false;
+		for (Cape c : next.capes()) {
+			if (!c.state().equals("approved")) continue;
+			for (Cape before : state.capes()) {
+				if (before.id() == c.id() && before.state().equals("pending") && !quiet) {
+					Toasts.show("Your cape was approved", "Everyone can see it now", Toasts.Kind.INFO);
+				}
+			}
+		}
 		for (Invite i : next.invites()) {
 			if (seenInvites.add(i.id()) && !quiet) {
 				Toasts.show(i.name() + " invited you", i.server(), Toasts.Kind.INVITE);

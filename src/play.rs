@@ -11,10 +11,12 @@ use crate::net::{self, Job};
 use crate::window::App;
 use crate::{dialogs, game};
 
+
 enum Status {
     Renewed(Account),
     Started,
     Exited { code: Option<i32>, start: i64, secs: u64, killed: bool },
+    Switched(Account),
     Failed(String),
 }
 
@@ -578,6 +580,12 @@ fn launch(app: &Rc<App>, ui: &Rc<Ui>, join: Option<String>) {
                     ui.log_reveal.set_reveal_child(true);
                     refresh(&app, &ui);
                 }
+                Status::Switched(acc) => {
+                    let mut roster = auth::roster();
+                    roster.active = Some(acc.uuid.clone());
+                    let _ = auth::save_roster(&roster);
+                    app.set_account(Some(acc));
+                }
                 Status::Exited { code, start, secs, killed } => {
                     let finished = ui.running.borrow_mut().take();
                     let crashed = !killed && code.is_some_and(|c| c != 0);
@@ -618,6 +626,86 @@ fn failed(app: &Rc<App>, msg: &str) {
     dialog.present(Some(&app.window));
 }
 
+fn from_mod(line: &str) -> Option<&str> {
+    let msg = match line.find("]: ") {
+        Some(at) => &line[at + 3..],
+        None => &line[line.find("(Oppa) ")? + 7..],
+    };
+    msg.starts_with("oppa-").then_some(msg)
+}
+
+fn switch_key() -> String {
+    use sha1::{Digest, Sha1};
+    let seed = format!("{:?}{}{:?}", std::time::SystemTime::now(), std::process::id(), std::thread::current().id());
+    hex::encode(Sha1::digest(seed.as_bytes()))
+}
+
+fn token_request<'a>(msg: &'a str, key: &str) -> Option<(&'a str, &'a str)> {
+    let mut parts = msg.strip_prefix("oppa-token ")?.split_whitespace();
+    if parts.next()? != key {
+        return None;
+    }
+    let uuid = parts.next().filter(|u| u.len() == 32 && u.chars().all(|c| c.is_ascii_hexdigit()))?;
+    let nonce = parts.next().filter(|n| n.len() == 32 && n.chars().all(|c| c.is_ascii_hexdigit()))?;
+    Some((uuid, nonce))
+}
+
+async fn grant(uuid: String, nonce: String, dir: std::path::PathBuf, status: async_channel::Sender<Status>) {
+    let result = async {
+        let entry = auth::roster()
+            .accounts
+            .into_iter()
+            .find(|a| a.uuid.replace('-', "") == uuid)
+            .ok_or_else(|| anyhow::anyhow!("That account isn't in the launcher anymore"))?;
+        let acc = auth::fresh(&auth::load(&entry.uuid).await?).await?;
+        let site = crate::site::session_for(&acc).await.unwrap_or_default();
+        anyhow::Ok((acc, site))
+    }
+    .await;
+    let body = match &result {
+        Ok((acc, site)) => serde_json::json!({ "name": acc.name, "uuid": acc.uuid.replace('-', ""), "token": acc.mc_token, "xuid": acc.xuid, "site": site }),
+        Err(e) => serde_json::json!({ "error": format!("{e:#}") }),
+    };
+    let target = dir.join(format!("{nonce}.json"));
+    let part = dir.join(format!("{nonce}.part"));
+    let bytes = serde_json::to_vec(&body).unwrap_or_default();
+    let (folder, part2, target2) = (dir.clone(), part.clone(), target.clone());
+    let written = tokio::task::spawn_blocking(move || private_write(&folder, &part2, &target2, &bytes)).await.unwrap_or_else(|e| Err(e.into()));
+    let stale = target.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        let _ = tokio::fs::remove_file(stale).await;
+    });
+    if let (Ok(()), Ok((acc, _))) = (written, result) {
+        let _ = status.send(Status::Switched(acc)).await;
+    }
+}
+
+fn private_write(dir: &std::path::Path, part: &std::path::Path, target: &std::path::Path, bytes: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write;
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    let mut open = std::fs::OpenOptions::new();
+    open.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+        builder.mode(0o700);
+        open.mode(0o600);
+        builder.create(dir)?;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    #[cfg(not(unix))]
+    builder.create(dir)?;
+    let _ = std::fs::remove_file(part);
+    let mut file = open.open(part)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(part, target)?;
+    Ok(())
+}
+
 fn quick_play(game: &str, server: &str) -> Vec<String> {
     let minor = game.strip_prefix("1.").and_then(|r| r.split('.').next()).and_then(|m| m.parse::<u32>().ok());
     if minor.is_some_and(|m| m < 20) {
@@ -638,6 +726,8 @@ async fn run(
     kill: async_channel::Receiver<()>,
     status: async_channel::Sender<Status>,
 ) {
+    let key = switch_key();
+    let _ = tokio::fs::remove_dir_all(inst.game_dir().join(".oppa")).await;
     let result = async {
         let job = Job::begin(format!("Preparing {}", inst.name));
         let acc2 = match auth::fresh(&acc).await {
@@ -658,6 +748,10 @@ async fn run(
         if let Some(token) = crate::site::wait_token(std::time::Duration::from_secs(4)).await {
             cmd.env("OPPA_TOKEN", token);
         }
+        let accounts: Vec<String> = auth::roster().accounts.iter().map(|a| format!("{}:{}", a.uuid.replace('-', ""), a.name)).collect();
+        cmd.env("OPPA_ACCOUNTS", accounts.join(";"));
+        cmd.env("OPPA_SKINS", crate::wardrobe::library_dir());
+        cmd.env("OPPA_SWITCH_KEY", &key);
         if let Some(server) = &join {
             cmd.args(quick_play(&inst.game_version, server));
         }
@@ -683,12 +777,20 @@ async fn run(
     crate::discord::set(crate::discord::Status::Menu { game: inst.game_version.clone() });
     if let Some(out) = child.stdout.take() {
         let tx = lines.clone();
+        let key = key.clone();
+        let status = status.clone();
+        let handoff = inst.game_dir().join(".oppa");
         tokio::spawn(async move {
             let mut r = tokio::io::BufReader::new(out).lines();
             while let Ok(Some(l)) = r.next_line().await {
-                if let Some(status) = crate::discord::from_log(&l) {
-                    crate::discord::set(status);
-                    crate::site::from_log(&l, share);
+                if let Some(msg) = from_mod(&l) {
+                    if let Some((uuid, nonce)) = token_request(msg, &key) {
+                        tokio::spawn(grant(uuid.to_string(), nonce.to_string(), handoff.clone(), status.clone()));
+                    }
+                    if let Some(status) = crate::discord::from_log(msg) {
+                        crate::discord::set(status);
+                        crate::site::from_log(msg, share);
+                    }
                 }
                 let _ = tx.send(l).await;
             }
@@ -718,4 +820,26 @@ async fn run(
     let secs = (now() - start).max(0) as u64;
     let code = exit.ok().and_then(|s| s.code());
     let _ = status.send(Status::Exited { code, start, secs, killed }).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{from_mod, token_request};
+
+    #[test]
+    fn only_mod_lines_count() {
+        assert_eq!(from_mod("[12:00:00] [Render thread/INFO]: oppa-presence 1.21.11 menu"), Some("oppa-presence 1.21.11 menu"));
+        assert_eq!(from_mod("[12:00:00] [Render thread/INFO]: [CHAT] <x> oppa-token k 0123"), None);
+        assert_eq!(from_mod("[12:00:00] [Render thread/INFO] (Oppa) oppa-presence 26.3 menu"), Some("oppa-presence 26.3 menu"));
+    }
+
+    #[test]
+    fn token_needs_key_uuid_and_nonce() {
+        let uuid = "2eb876aa478647a88fe75d1508d51c76";
+        let nonce = "0123456789abcdef0123456789abcdef";
+        assert_eq!(token_request(&format!("oppa-token key {uuid} {nonce}"), "key"), Some((uuid, nonce)));
+        assert_eq!(token_request(&format!("oppa-token wrong {uuid} {nonce}"), "key"), None);
+        assert_eq!(token_request(&format!("oppa-token key {uuid} short"), "key"), None);
+        assert_eq!(token_request("oppa-token key not-a-uuid x", "key"), None);
+    }
 }

@@ -20,7 +20,7 @@ import java.util.function.Supplier;
 public final class CosmeticsLayer extends FeatureRenderer<PlayerEntityRenderState, PlayerEntityModel> {
 	private static final RenderLayer SOLID = RenderLayer.getEntityCutoutNoCull(Cosmetics.WHITE);
 	private static final RenderLayer CLEAR = RenderLayer.getEntityTranslucent(Cosmetics.WHITE);
-	private static final RenderLayer GLOW = RenderLayer.getEyes(Cosmetics.WHITE);
+	private static final RenderLayer GLOW = RenderLayer.getEntityTranslucentEmissive(Cosmetics.WHITE);
 
 	public CosmeticsLayer(FeatureRendererContext<PlayerEntityRenderState, PlayerEntityModel> context) {
 		super(context);

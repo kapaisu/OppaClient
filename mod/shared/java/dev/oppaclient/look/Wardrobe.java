@@ -19,6 +19,15 @@ public final class Wardrobe {
 
 	private Wardrobe() {}
 
+	public static void reset() {
+		hat = Look.NONE;
+		wings = Look.NONE;
+		aura = Look.NONE;
+		cape = null;
+		dirty = false;
+		adopted = false;
+	}
+
 	public static Look hat() {
 		return hat;
 	}
@@ -40,6 +49,8 @@ public final class Wardrobe {
 	}
 
 	public static String status() {
+		Social.Cape c = capeEntry();
+		if (status != null && status.contains("review") && c != null && c.state().equals("approved")) status = null;
 		return status;
 	}
 
@@ -104,32 +115,40 @@ public final class Wardrobe {
 		}
 	}
 
-	public static void upload(Path file) {
+	public static void open(Path file, java.util.function.Consumer<CapeEditor> ready) {
 		if (!Api.signedIn()) {
 			status = "Start Minecraft from the Oppa launcher to make capes";
 			return;
 		}
-		if (uploading) return;
-		uploading = true;
-		status = "Making your cape";
+		status = "Opening the image";
 		Thread.ofVirtual().start(() -> {
 			try {
-				long size = Files.size(file);
-				if (size > 25L * 1024 * 1024) throw new IllegalArgumentException("That image is over 25 MB");
-				Images.Image art = CapeArt.compose(Images.decode(Files.readAllBytes(file)));
-				byte[] png = Images.png(art);
-				status = "Uploading";
-				JsonObject res = Api.upload("cape.php", "image/png", png).join();
+				if (Files.size(file) > 25L * 1024 * 1024) throw new IllegalArgumentException("That image is over 25 MB");
+				CapeEditor editor = new CapeEditor(Images.decode(Files.readAllBytes(file)));
+				status = null;
+				ready.accept(editor);
+			} catch (IOException | RuntimeException e) {
+				status = "Couldn't open that image: " + Api.message(e);
+			}
+		});
+	}
+
+	public static void upload(Images.Image art) {
+		if (uploading) return;
+		uploading = true;
+		status = "Uploading";
+		Thread.ofVirtual().start(() -> {
+			try {
+				JsonObject res = Api.upload("cape.php", "image/png", Images.png(art)).join();
 				String url = res.get("url").getAsString();
 				Looks.remember(url, art);
-				int id = res.get("id").getAsInt();
-				cape = id;
+				cape = res.get("id").getAsInt();
 				adopted = true;
 				dev.oppaclient.platform.Platform.showCape();
 				Social.soon();
 				status = "approved".equals(res.get("state").getAsString()) ? null : "Your cape is waiting for review. Only you can see it until then.";
-			} catch (IOException | RuntimeException e) {
-				status = "Couldn't make that cape: " + Api.message(e);
+			} catch (RuntimeException e) {
+				status = "Couldn't upload that cape: " + Api.message(e);
 			} finally {
 				uploading = false;
 			}

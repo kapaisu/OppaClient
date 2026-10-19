@@ -165,6 +165,10 @@ fn system() -> &'static str {
     if std::path::Path::new("/.flatpak-info").exists() { "flatpak" } else { std::env::consts::OS }
 }
 
+pub async fn session_for(acc: &crate::auth::Account) -> anyhow::Result<String> {
+    hello(&acc.name, &acc.uuid, &acc.mc_token).await
+}
+
 async fn hello(name: &str, uuid: &str, mc_token: &str) -> anyhow::Result<String> {
     #[derive(Deserialize)]
     struct Nonce {

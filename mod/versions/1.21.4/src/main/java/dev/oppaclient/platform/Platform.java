@@ -44,14 +44,19 @@ public final class Platform {
 		return player.isGliding();
 	}
 
+	public static void leave() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc.world == null) return;
+		boolean single = mc.isInSingleplayer();
+		mc.world.disconnect();
+		if (single) mc.disconnect(new net.minecraft.client.gui.screen.MessageScreen(Text.translatable("menu.savingLevel")));
+		else mc.disconnect();
+		mc.setScreen(new net.minecraft.client.gui.screen.TitleScreen());
+	}
+
 	public static void join(String address) {
 		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.world != null) {
-			boolean single = mc.isInSingleplayer();
-			mc.world.disconnect();
-			if (single) mc.disconnect(new net.minecraft.client.gui.screen.MessageScreen(Text.translatable("menu.savingLevel")));
-			else mc.disconnect();
-		}
+		leave();
 		net.minecraft.client.network.ServerInfo info = new net.minecraft.client.network.ServerInfo(address, address, net.minecraft.client.network.ServerInfo.ServerType.OTHER);
 		net.minecraft.client.gui.screen.multiplayer.ConnectScreen.connect(new net.minecraft.client.gui.screen.TitleScreen(), mc,
 				net.minecraft.client.network.ServerAddress.parse(address), info, false, null);

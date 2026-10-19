@@ -3,8 +3,11 @@ package dev.oppaclient.look;
 public final class Hats {
 	private Hats() {}
 
+	private static float strength = 1f;
+
 	public static void build(Mesh m, Look look, float time) {
 		int a = Mesh.opaque(look.primary()), b = Mesh.opaque(look.secondary());
+		strength = look.glow() * 2f;
 		m.push();
 		m.translate(0, -look.lift(), 0);
 		switch (look.style()) {
@@ -31,16 +34,27 @@ public final class Hats {
 	}
 
 	private static void halo(Mesh m, float x, float y, float z, float r, int c, float alpha) {
+		float k = alpha * strength;
+		if (k <= 0.01f) return;
+		layer(m, x, y, z, r * 0.45f, Mesh.mix(c, 0xFFFFFFFF, 0.35f), Math.min(1, k * 1.2f));
+		layer(m, x, y, z, r, c, Math.min(1, k * 0.6f));
+		layer(m, x, y, z, r * 1.9f, c, Math.min(1, k * 0.22f));
+	}
+
+	private static void layer(Mesh m, float x, float y, float z, float r, int c, float alpha) {
 		byte pen = m.pen();
 		m.pen(Mesh.GLOW);
 		int in = Mesh.alpha(c, alpha), out = Mesh.alpha(c, 0);
-		float[][] tips = {{r, 0, 0}, {0, r, 0}, {-r, 0, 0}, {0, -r, 0}};
+		int n = 10;
 		for (int plane = 0; plane < 3; plane++) {
-			for (int k = 0; k < 4; k++) {
-				float[] p = tips[k], q = tips[(k + 1) % 4];
-				float px = plane == 1 ? 0 : p[0], py = plane == 2 ? 0 : p[1], pz = plane == 1 ? p[0] : plane == 2 ? p[1] : 0;
-				float qx = plane == 1 ? 0 : q[0], qy = plane == 2 ? 0 : q[1], qz = plane == 1 ? q[0] : plane == 2 ? q[1] : 0;
-				m.tri(x, y, z, x + px, y + py, z + pz, x + qx, y + qy, z + qz, in, out, out);
+			for (int k = 0; k < n; k++) {
+				double a0 = Math.PI * 2 * k / n, a1 = Math.PI * 2 * (k + 1) / n;
+				float u0 = Shapes.cos(a0) * r, v0 = Shapes.sin(a0) * r, u1 = Shapes.cos(a1) * r, v1 = Shapes.sin(a1) * r;
+				switch (plane) {
+					case 0 -> m.tri(x, y, z, x + u0, y + v0, z, x + u1, y + v1, z, in, out, out);
+					case 1 -> m.tri(x, y, z, x, y + v0, z + u0, x, y + v1, z + u1, in, out, out);
+					default -> m.tri(x, y, z, x + u0, y, z + v0, x + u1, y, z + v1, in, out, out);
+				}
 			}
 		}
 		m.pen(pen);
@@ -50,7 +64,7 @@ public final class Hats {
 		m.pen(Mesh.BRIGHT);
 		block(m, x - s, y - s, z - s, x + s, y + s, z + s, Mesh.mix(c, 0xFFFFFFFF, 0.15f));
 		m.pen(Mesh.SOLID);
-		halo(m, x, y, z, s * 4.5f, c, 0.45f * pulse);
+		halo(m, x, y, z, s * 5.5f, c, 0.55f * pulse);
 	}
 
 	private static void sparkle(Mesh m, float x, float y, float z, float s, int c, float fade) {
@@ -95,6 +109,18 @@ public final class Hats {
 				block(m, x - 0.4f, y1 - h, z - 0.3f, x + 0.4f, y1 - h * 0.55f, z + 0.3f, bright);
 				gem(m, x, y1 - h - 0.35f, z, 0.32f, tall ? gem : bright, pulse(t, n++));
 			}
+		}
+		if (strength > 0.05f) {
+			m.pen(Mesh.GLOW);
+			int rim = Mesh.alpha(bright, Math.min(1, 0.35f * strength));
+			int none = Mesh.alpha(bright, 0);
+			for (int side = 0; side < 4; side++) {
+				float ax = side < 2 ? -o : side == 2 ? -o : o, az = side == 0 ? -o : side == 1 ? o : -o;
+				float bx = side < 2 ? o : side == 2 ? -o : o, bz = side == 0 ? -o : side == 1 ? o : o;
+				float nx = side == 2 ? -1 : side == 3 ? 1 : 0, nz = side == 0 ? -1 : side == 1 ? 1 : 0;
+				m.quad(ax, y1, az, bx, y1, bz, bx + nx * 0.8f, y1 - 0.9f, bz + nz * 0.8f, ax + nx * 0.8f, y1 - 0.9f, az + nz * 0.8f, rim, rim, none, none);
+			}
+			m.pen(Mesh.SOLID);
 		}
 		gem(m, 0, (y0 + y1) / 2, -o - 0.1f, 0.6f, gem, pulse(t, 0.5f));
 		gem(m, 0, (y0 + y1) / 2, o + 0.1f, 0.6f, gem, pulse(t, 1.5f));

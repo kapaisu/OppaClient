@@ -52,6 +52,12 @@ public final class Skins {
 		return null;
 	}
 
+	public static void put(String uuid, Skin skin) {
+		String id = uuid.replace("-", "");
+		cache.put(id, skin);
+		failed.remove(id);
+	}
+
 	public static boolean failed(String uuid) {
 		return uuid == null || failed.containsKey(uuid.replace("-", ""));
 	}

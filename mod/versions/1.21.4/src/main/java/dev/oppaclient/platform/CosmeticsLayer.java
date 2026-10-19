@@ -52,6 +52,6 @@ public final class CosmeticsLayer extends FeatureRenderer<PlayerEntityRenderStat
 		MatrixStack.Entry e = matrices.peek();
 		if (Draw.has(mesh, Mesh.SOLID)) Draw.mesh(mesh, Mesh.SOLID, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEntityCutoutNoCull(Cosmetics.WHITE))::vertex);
 		if (Draw.has(mesh, Mesh.CLEAR)) Draw.mesh(mesh, Mesh.CLEAR, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEntityTranslucent(Cosmetics.WHITE))::vertex);
-		if (Draw.has(mesh, Mesh.GLOW)) Draw.mesh(mesh, Mesh.GLOW, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEyes(Cosmetics.WHITE))::vertex);
+		if (Draw.has(mesh, Mesh.GLOW)) Draw.mesh(mesh, Mesh.GLOW, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEntityTranslucentEmissive(Cosmetics.WHITE))::vertex);
 	}
 }

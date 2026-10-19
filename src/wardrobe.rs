@@ -170,7 +170,7 @@ pub struct Saved {
     pub added: i64,
 }
 
-fn library_dir() -> PathBuf {
+pub fn library_dir() -> PathBuf {
     data_dir().join("skins")
 }
 

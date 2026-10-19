@@ -19,6 +19,7 @@ struct Page {
     seen_invites: RefCell<HashSet<u64>>,
     first: Cell<bool>,
     busy: Cell<bool>,
+    again: Cell<bool>,
 }
 
 pub fn page(app: &Rc<App>) -> gtk::Widget {
@@ -47,6 +48,7 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         seen_invites: Default::default(),
         first: Cell::new(true),
         busy: Cell::new(false),
+        again: Cell::new(false),
     });
 
     let submit = glib::clone!(
@@ -122,6 +124,7 @@ fn say(p: &Page, text: &str) {
 
 fn refresh(app: &Rc<App>, p: &Rc<Page>) {
     if p.busy.get() {
+        p.again.set(true);
         return;
     }
     if site::token().is_none() {
@@ -134,6 +137,10 @@ fn refresh(app: &Rc<App>, p: &Rc<Page>) {
     glib::spawn_future_local(async move {
         let result = net::bg(site::social()).await;
         p.busy.set(false);
+        if p.again.replace(false) {
+            refresh(&app, &p);
+            return;
+        }
         match result {
             Ok(social) => {
                 if p.status.label().starts_with("Connecting") || p.status.label().starts_with("Sign in") {
@@ -193,8 +200,8 @@ fn render(app: &Rc<App>, p: &Rc<Page>, social: &Social) {
         for r in &social.incoming {
             let accept = gtk::Button::builder().label("Accept").css_classes(["pill", "suggested-action", "friend-action"]).valign(gtk::Align::Center).build();
             let decline = gtk::Button::builder().label("Decline").css_classes(["pill", "flat", "friend-action"]).valign(gtk::Align::Center).build();
-            act(app, p, &accept, "accept", &r.uuid);
-            act(app, p, &decline, "decline", &r.uuid);
+            act(app, p, &accept, "accept", &r.uuid, &r.name);
+            act(app, p, &decline, "decline", &r.uuid, &r.name);
             p.list.append(&person(&r.name, Some(&r.uuid), "Wants to be friends", &[decline.upcast(), accept.upcast()]));
         }
     }
@@ -223,7 +230,7 @@ fn render(app: &Rc<App>, p: &Rc<Page>, social: &Social) {
         let remove = gtk::Button::builder().label(format!("Remove {}", f.name)).css_classes(["flat", "model-row"]).build();
         let pop = gtk::Popover::builder().css_classes(["menu"]).child(&remove).build();
         more.set_popover(Some(&pop));
-        act(app, p, &remove, "remove", &f.uuid);
+        act(app, p, &remove, "remove", &f.uuid, &f.name);
         buttons.push(more.upcast());
         p.list.append(&person(&f.name, Some(&f.uuid), &describe(f), &buttons));
     }
@@ -231,7 +238,7 @@ fn render(app: &Rc<App>, p: &Rc<Page>, social: &Social) {
         section(&p.list, "Sent");
         for r in &social.outgoing {
             let cancel = gtk::Button::builder().label("Cancel").css_classes(["pill", "flat", "friend-action"]).valign(gtk::Align::Center).build();
-            act(app, p, &cancel, "cancel", &r.uuid);
+            act(app, p, &cancel, "cancel", &r.uuid, &r.name);
             p.list.append(&person(&r.name, Some(&r.uuid), "Waiting for them to accept", &[cancel.upcast()]));
         }
     }
@@ -301,8 +308,13 @@ fn person(name: &str, uuid: Option<&str>, detail: &str, buttons: &[gtk::Widget])
     row
 }
 
-fn act(app: &Rc<App>, p: &Rc<Page>, button: &gtk::Button, action: &'static str, uuid: &str) {
+fn act(app: &Rc<App>, p: &Rc<Page>, button: &gtk::Button, action: &'static str, uuid: &str, name: &str) {
     let uuid = uuid.to_string();
+    let done = match action {
+        "accept" => format!("You and {name} are friends"),
+        "remove" => format!("Removed {name}"),
+        _ => String::new(),
+    };
     button.connect_clicked(glib::clone!(
         #[weak]
         app,
@@ -310,10 +322,16 @@ fn act(app: &Rc<App>, p: &Rc<Page>, button: &gtk::Button, action: &'static str, 
         p,
         move |b| {
             b.set_sensitive(false);
-            let uuid = uuid.clone();
+            let (uuid, done) = (uuid.clone(), done.clone());
+            let button = b.clone();
             glib::spawn_future_local(async move {
-                if let Err(e) = net::bg(site::friend(action, uuid)).await {
-                    app.toast(&e.to_string());
+                match net::bg(site::friend(action, uuid)).await {
+                    Ok(_) if !done.is_empty() => app.toast(&done),
+                    Ok(_) => {}
+                    Err(e) => {
+                        button.set_sensitive(true);
+                        app.toast(&format!("Couldn't do that: {e}"));
+                    }
                 }
                 refresh(&app, &p);
             });

@@ -37,6 +37,7 @@ public final class MainMenu extends BaseScreen {
 			add("Mods", this::openModMenu);
 		}
 		add("Oppa", () -> Platform.show(new MenuScreen()));
+		add("Account", () -> Platform.show(new AccountScreen(this, 0)));
 		add("Options", () -> Platform.show(Platform.options(this)));
 		add("Quit", minecraft::stop);
 	}
