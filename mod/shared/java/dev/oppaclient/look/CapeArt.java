@@ -22,6 +22,24 @@ public final class CapeArt {
 		return new Images.Image(w, h, px);
 	}
 
+	public static Images.Image fitElytra(Images.Image cape, Images.Image elytra) {
+		if (elytra == null) return cape;
+		int w = cape.width(), h = cape.height(), ew = elytra.width(), eh = elytra.height();
+		int[] px = cape.argb().clone();
+		for (int y = 0; y < h; y++) {
+			int v = y * 32 / h;
+			if (v >= 22) break;
+			for (int x = 0; x < w; x++) {
+				int u = x * 64 / w;
+				if (u < 22 || u >= 46) continue;
+				int mask = elytra.at(x * ew / w, y * eh / h) >>> 24;
+				int c = px[y * w + x];
+				px[y * w + x] = Math.min(c >>> 24, mask) << 24 | c & 0xFFFFFF;
+			}
+		}
+		return new Images.Image(w, h, px);
+	}
+
 	private static int opaqueAverage(Images.Image img) {
 		long r = 0, g = 0, b = 0, n = 0;
 		for (int c : img.argb()) {

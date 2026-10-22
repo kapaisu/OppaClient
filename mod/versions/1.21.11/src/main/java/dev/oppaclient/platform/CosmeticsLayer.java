@@ -16,12 +16,14 @@ import net.minecraft.client.render.entity.model.PlayerEntityModel;
 import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 
+import java.util.UUID;
 import java.util.function.Supplier;
 
 public final class CosmeticsLayer extends FeatureRenderer<PlayerEntityRenderState, PlayerEntityModel> {
 	private static final RenderLayer SOLID = RenderLayers.entityCutoutNoCull(Cosmetics.WHITE);
 	private static final RenderLayer CLEAR = RenderLayers.entityTranslucent(Cosmetics.WHITE);
 	private static final RenderLayer GLOW = RenderLayers.entityTranslucentEmissive(Cosmetics.WHITE);
+	private static final RenderLayer HALO = RenderLayers.eyes(Cosmetics.GLOW);
 
 	public CosmeticsLayer(FeatureRendererContext<PlayerEntityRenderState, PlayerEntityModel> context) {
 		super(context);
@@ -34,13 +36,14 @@ public final class CosmeticsLayer extends FeatureRenderer<PlayerEntityRenderStat
 		if (mc.world == null || !(mc.world.getEntityById(state.id) instanceof AbstractClientPlayerEntity player)) return;
 		Looks.Worn worn = Cosmetics.worn(player);
 		if (worn.empty()) return;
-		float time = Draw.time(player.getUuid());
-		float pace = Cosmetics.pace(player);
-		if (!worn.aura().none()) submit(matrices, queue, light, () -> Draw.aura(worn.aura(), time));
-		if (!worn.wings().none()) {
+		UUID id = player.getUuid();
+		float time = Draw.time(id);
+		float air = Cosmetics.air(player);
+		if (!worn.aura().none()) submit(matrices, queue, light, () -> Draw.aura(id, worn.aura(), time));
+		if (!worn.wings().none() && !Cosmetics.elytra(player)) {
 			matrices.push();
 			getContextModel().body.applyTransform(matrices);
-			submit(matrices, queue, light, () -> Draw.wings(worn.wings(), time, pace));
+			submit(matrices, queue, light, () -> Draw.wings(id, worn.wings(), time, player.getX(), player.getZ(), air));
 			matrices.pop();
 		}
 		if (!worn.hat().none()) {
@@ -51,7 +54,7 @@ public final class CosmeticsLayer extends FeatureRenderer<PlayerEntityRenderStat
 				matrices.scale(Cosmetics.HELMET, Cosmetics.HELMET, Cosmetics.HELMET);
 				matrices.translate(0, 0.25f, 0);
 			}
-			submit(matrices, queue, light, () -> Draw.hat(worn.hat(), time));
+			submit(matrices, queue, light, () -> Draw.hat(id, worn.hat(), time));
 			matrices.pop();
 		}
 	}
@@ -61,5 +64,6 @@ public final class CosmeticsLayer extends FeatureRenderer<PlayerEntityRenderStat
 		if (Draw.has(probe, Mesh.SOLID)) queue.submitCustom(matrices, SOLID, (e, c) -> Draw.mesh(mesh.get(), Mesh.SOLID, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, c::vertex));
 		if (Draw.has(probe, Mesh.CLEAR)) queue.submitCustom(matrices, CLEAR, (e, c) -> Draw.mesh(mesh.get(), Mesh.CLEAR, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, c::vertex));
 		if (Draw.has(probe, Mesh.GLOW)) queue.submitCustom(matrices, GLOW, (e, c) -> Draw.mesh(mesh.get(), Mesh.GLOW, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, c::vertex));
+		if (Draw.has(probe, Mesh.HALO)) queue.submitCustom(matrices, HALO, (e, c) -> Draw.halos(mesh.get(), e.getPositionMatrix(), OverlayTexture.DEFAULT_UV, c::vertex));
 	}
 }

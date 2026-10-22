@@ -23,7 +23,10 @@ import dev.oppaclient.look.Looks;
 import dev.oppaclient.look.Skins;
 import dev.oppaclient.look.Stage;
 import dev.oppaclient.look.Wardrobe;
+import dev.oppaclient.perf.Limits;
 import dev.oppaclient.social.Api;
+import dev.oppaclient.social.Chat;
+import dev.oppaclient.social.Hosting;
 import dev.oppaclient.social.Social;
 import dev.oppaclient.social.Toasts;
 import dev.oppaclient.platform.BaseScreen;
@@ -54,6 +57,10 @@ public final class MenuScreen extends BaseScreen {
 
 	private int tab = lastTab;
 	private Object detail;
+	private long chatSeen;
+	private boolean stickBottom;
+
+	private record ChatWith(String uuid, String name) {}
 	private int slideFrom = 1;
 
 	private final Paint.Smooth open = new Paint.Smooth(0, 14).to(1);
@@ -167,7 +174,9 @@ public final class MenuScreen extends BaseScreen {
 
 		ctx.scissor(0, TOP, width, height - 16);
 		int start = y;
-		if (detail instanceof Element e) {
+		if (detail instanceof ChatWith with) {
+			y = chatPage(ctx, with, x, y, mouseX, my, alpha);
+		} else if (detail instanceof Element e) {
 			y = elementPage(ctx, e, x, y, mouseX, my, alpha);
 		} else if (CAPE.equals(detail) && editor != null) {
 			y = capePage(ctx, x, y, mouseX, my, alpha);
@@ -194,6 +203,10 @@ public final class MenuScreen extends BaseScreen {
 		}
 		ctx.endScissor();
 		contentHeight = y - start;
+		if (stickBottom) {
+			stickBottom = false;
+			scroll.to(Math.max(0, contentHeight - (height - TOP - 24)));
+		}
 
 		if (hint != null) {
 			Type.SMALL.drawCentered(ctx, hint, width / 2, height - 12, Paint.ink(0.5f * a));
@@ -240,6 +253,7 @@ public final class MenuScreen extends BaseScreen {
 
 	private void switchTab(int index) {
 		if (index == tab && detail == null) return;
+		leaveChat();
 		slideFrom = index > tab ? 1 : -1;
 		tab = lastTab = index;
 		detail = null;
@@ -260,7 +274,91 @@ public final class MenuScreen extends BaseScreen {
 		restartContent();
 	}
 
+	private void leaveChat() {
+		if (!(detail instanceof ChatWith)) return;
+		Chat.close();
+		if ("chat".equals(fieldKey)) fieldKey = null;
+	}
+
+	private void openChat(String uuid, String name) {
+		Chat.open(uuid);
+		openDetail(new ChatWith(uuid, name));
+		fieldKey = "chat";
+		fieldBuffer = "";
+		stickBottom = true;
+	}
+
+	private void sendChat() {
+		if (!(detail instanceof ChatWith with)) return;
+		if (Chat.send(with.uuid(), fieldBuffer)) {
+			fieldBuffer = "";
+			stickBottom = true;
+		} else if (!fieldBuffer.isBlank()) {
+			Toasts.show("Message not sent", Chat.online() ? null : "Chat is offline", Toasts.Kind.INFO);
+		}
+	}
+
+	private List<String> wrap(String text, int w) {
+		List<String> lines = new ArrayList<>();
+		StringBuilder line = new StringBuilder();
+		for (String word : text.split(" ")) {
+			String next = line.isEmpty() ? word : line + " " + word;
+			if (Type.UI.width(next) <= w || line.isEmpty()) {
+				line.setLength(0);
+				line.append(next);
+				while (Type.UI.width(line.toString()) > w && line.length() > 1) {
+					int cut = line.length() - 1;
+					while (cut > 1 && Type.UI.width(line.substring(0, cut)) > w) cut--;
+					lines.add(line.substring(0, cut));
+					line.delete(0, cut);
+				}
+			} else {
+				lines.add(line.toString());
+				line.setLength(0);
+				line.append(word);
+			}
+		}
+		if (!line.isEmpty()) lines.add(line.toString());
+		return lines;
+	}
+
+	private int chatPage(Gfx ctx, ChatWith with, int x, int y, int mouseX, int mouseY, float alpha) {
+		y = back(ctx, with.name(), x, y, mouseX, mouseY, alpha);
+		List<Chat.Message> messages = Chat.thread(with.uuid());
+		if (!Chat.online()) {
+			Type.SMALL.draw(ctx, Chat.problem() != null ? Chat.problem() : "Connecting…", x, y + 4, Paint.ink(0.5f * alpha));
+			y += ROW;
+		} else if (messages.isEmpty()) {
+			Type.SMALL.draw(ctx, "Say hi to " + with.name() + ".", x, y + 4, Paint.ink(0.5f * alpha));
+			y += ROW;
+		}
+		String last = null;
+		for (Chat.Message m : messages) {
+			boolean mine = Chat.mine(m);
+			String who = mine ? "You" : with.name();
+			if (!who.equals(last)) {
+				y += 6;
+				Type.SMALL.draw(ctx, who, x, y, Paint.ink(0.45f * alpha));
+				y += 12;
+				last = who;
+			}
+			for (String line : wrap(m.text(), column())) {
+				Type.UI.draw(ctx, line, x, y, Paint.ink((mine ? 0.7f : 0.95f) * alpha));
+				y += 12;
+			}
+		}
+		y += 10;
+		field(ctx, "chat", "Message " + with.name(), "", x, y, column() - Type.UI.width("Send") - 26, mouseX, mouseY, alpha);
+		chip(ctx, "Send", x + column(), y + 3, mouseX, mouseY, alpha, true, click -> sendChat());
+		if (Chat.changed() != chatSeen) {
+			chatSeen = Chat.changed();
+			stickBottom = true;
+		}
+		return y + ROW + 8;
+	}
+
 	private void closeDetail() {
+		leaveChat();
 		detail = null;
 		slideFrom = -1;
 		restartContent();
@@ -553,6 +651,10 @@ public final class MenuScreen extends BaseScreen {
 
 	private void commitField() {
 		if (fieldKey == null) return;
+		if (fieldKey.equals("chat")) {
+			sendChat();
+			return;
+		}
 		String key = fieldKey, value = fieldBuffer.trim();
 		fieldKey = null;
 		if (key.equals("search")) {
@@ -590,8 +692,27 @@ public final class MenuScreen extends BaseScreen {
 	}
 
 	private String currentServer() {
-		if (client.world == null || client.isInSingleplayer() || client.getCurrentServerEntry() == null) return null;
-		return client.getCurrentServerEntry().address.trim();
+		if (client.world == null) return null;
+		if (client.isInSingleplayer()) return Hosting.ready() ? Hosting.address() : null;
+		if (client.getCurrentServerEntry() == null) return null;
+		return Hosting.label(client.getCurrentServerEntry().address.trim());
+	}
+
+	private void toggleHost() {
+		if (Hosting.active()) {
+			Hosting.stop();
+			return;
+		}
+		int port = Platform.openLan();
+		if (port < 0) Toasts.show("Couldn't open this world", null, Toasts.Kind.INFO);
+		else Hosting.start(port);
+	}
+
+	private static String hostLine() {
+		if (!Hosting.active()) return "Let friends join this world from anywhere.";
+		if (!Hosting.ready()) return Hosting.problem() != null ? Hosting.problem() : "Opening…";
+		int n = Hosting.guests();
+		return n == 0 ? "Hosting | invite friends below" : "Hosting | " + n + (n == 1 ? " friend here" : " friends here");
 	}
 
 	private int person(Gfx ctx, String uuid, String name, String detail, int x, int y, int mouseX, int mouseY, float alpha) {
@@ -609,6 +730,12 @@ public final class MenuScreen extends BaseScreen {
 			return y + ROW * 2;
 		}
 		int right = x + column();
+		if (Platform.singleplayer()) {
+			y = section(ctx, "This world", x, y, alpha);
+			Type.UI.draw(ctx, hostLine(), x, y + 6, Paint.ink(0.6f * alpha));
+			chip(ctx, Hosting.active() ? "Stop" : "Host", right, y + 3, mouseX, mouseY, alpha, !Hosting.active(), click -> toggleHost());
+			y += ROW + 6;
+		}
 		int fieldW = column() - Type.UI.width("Search") - 26;
 		field(ctx, "search", "Look up a player", search, x, y, fieldW, mouseX, mouseY, alpha);
 		chip(ctx, "Search", right, y + 3, mouseX, mouseY, alpha, true, click -> {
@@ -652,7 +779,7 @@ public final class MenuScreen extends BaseScreen {
 			y = section(ctx, "Invites", x, y, alpha);
 			for (Social.Invite inv : st.invites()) {
 				int top = y;
-				y = person(ctx, inv.uuid(), inv.name(), "Invited you to " + inv.server(), x, y, mouseX, mouseY, alpha);
+				y = person(ctx, inv.uuid(), inv.name(), "Invited you to " + Social.place(inv.server()), x, y, mouseX, mouseY, alpha);
 				if (!inv.server().equalsIgnoreCase(here == null ? "" : here)) {
 					chip(ctx, "Join", right, top + 7, mouseX, mouseY, alpha, true, click -> Platform.join(inv.server()));
 				}
@@ -691,8 +818,10 @@ public final class MenuScreen extends BaseScreen {
 					next = chip(ctx, "Join", next, top + 7, mouseX, mouseY, alpha, true, click -> Platform.join(f.server()));
 				}
 				if (here != null && f.online() && !here.equalsIgnoreCase(f.server())) {
-					chip(ctx, "Invite", next, top + 7, mouseX, mouseY, alpha, false, click -> act(key, Social.invite(f.uuid(), here), "Invited " + f.name()));
+					next = chip(ctx, "Invite", next, top + 7, mouseX, mouseY, alpha, false, click -> act(key, Social.invite(f.uuid(), here), "Invited " + f.name()));
 				}
+				int unread = Chat.unread(f.uuid());
+				chip(ctx, unread > 0 ? "Message | " + unread : "Message", next, top + 7, mouseX, mouseY, alpha, unread > 0, click -> openChat(f.uuid(), f.name()));
 			}
 			hits.add(new Hit(x - 8, top, column() + 16, 30, true, true, false, click -> {
 				if (click.secondary() && arm(key)) act(key, Social.friend("remove", f.uuid()), "Removed " + f.name());
@@ -1205,6 +1334,12 @@ public final class MenuScreen extends BaseScreen {
 				menu, Math.max(0, menu.indexOf(cfg.menuFps == 0 ? "Off" : Integer.toString(cfg.menuFps))),
 				i -> cfg.menuFps = i == 0 ? 0 : Integer.parseInt(menu.get(i)));
 		y += ROW;
+		choice(ctx, "Particles", "Caps particle bursts, skips far ones and thins out crit particles.", x, y, mouseX, mouseY, alpha,
+				Limits.LEVELS, Math.max(0, Limits.LEVELS.indexOf(cfg.particles)), i -> cfg.particles = Limits.LEVELS.get(i));
+		y += ROW;
+		choice(ctx, "Distant entities", "Hides far dropped items, XP orbs, item frames and armor stands.", x, y, mouseX, mouseY, alpha,
+				Limits.LEVELS, Math.max(0, Limits.LEVELS.indexOf(cfg.entities)), i -> cfg.entities = Limits.LEVELS.get(i));
+		y += ROW;
 
 		y = section(ctx, "Layout", x, y, alpha);
 		boolean armed = System.currentTimeMillis() < resetArmedUntil;
@@ -1235,7 +1370,7 @@ public final class MenuScreen extends BaseScreen {
 			}
 		}
 		commitHex();
-		commitField();
+		if (!"chat".equals(fieldKey)) commitField();
 		rebinding = null;
 		return false;
 	}
@@ -1271,6 +1406,10 @@ public final class MenuScreen extends BaseScreen {
 
 	@Override
 	protected boolean typed(int codepoint) {
+		if ("chat".equals(fieldKey)) {
+			if (codepoint >= 32 && fieldBuffer.length() < 256) fieldBuffer += Character.toString(codepoint);
+			return true;
+		}
 		if (fieldKey != null) {
 			if (fieldBuffer.length() < 16 && (Character.isLetterOrDigit(codepoint) || codepoint == '_') && codepoint < 128) {
 				fieldBuffer += Character.toString(codepoint);
@@ -1294,8 +1433,10 @@ public final class MenuScreen extends BaseScreen {
 			} else if (key == GLFW.GLFW_KEY_BACKSPACE) {
 				if (!fieldBuffer.isEmpty()) fieldBuffer = fieldBuffer.substring(0, fieldBuffer.length() - 1);
 			} else if (key == GLFW.GLFW_KEY_V && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0) {
-				String pasted = client.keyboard.getClipboard().replaceAll("[^A-Za-z0-9_]", "");
-				fieldBuffer = pasted.length() > 16 ? pasted.substring(0, 16) : pasted;
+				boolean chat = fieldKey.equals("chat");
+				String pasted = chat ? fieldBuffer + client.keyboard.getClipboard().replaceAll("\\p{Cntrl}", " ") : client.keyboard.getClipboard().replaceAll("[^A-Za-z0-9_]", "");
+				int max = chat ? 256 : 16;
+				fieldBuffer = pasted.length() > max ? pasted.substring(0, max) : pasted;
 			}
 			return true;
 		}
@@ -1343,6 +1484,7 @@ public final class MenuScreen extends BaseScreen {
 
 	@Override
 	public void removed() {
+		Chat.close();
 		commitHex();
 		fieldKey = null;
 		Config.get().save();

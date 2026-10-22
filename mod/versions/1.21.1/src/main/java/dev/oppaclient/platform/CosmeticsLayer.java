@@ -13,6 +13,8 @@ import net.minecraft.client.render.entity.feature.FeatureRendererContext;
 import net.minecraft.client.render.entity.model.PlayerEntityModel;
 import net.minecraft.client.util.math.MatrixStack;
 
+import java.util.UUID;
+
 public final class CosmeticsLayer extends FeatureRenderer<AbstractClientPlayerEntity, PlayerEntityModel<AbstractClientPlayerEntity>> {
 	public CosmeticsLayer(FeatureRendererContext<AbstractClientPlayerEntity, PlayerEntityModel<AbstractClientPlayerEntity>> context) {
 		super(context);
@@ -24,12 +26,14 @@ public final class CosmeticsLayer extends FeatureRenderer<AbstractClientPlayerEn
 		if (player.isInvisible()) return;
 		Looks.Worn worn = Cosmetics.worn(player);
 		if (worn.empty()) return;
-		float time = Draw.time(player.getUuid());
-		if (!worn.aura().none()) emit(matrices, consumers, light, Draw.aura(worn.aura(), time));
-		if (!worn.wings().none()) {
+		UUID id = player.getUuid();
+		float time = Draw.time(id);
+		float air = Cosmetics.air(player);
+		if (!worn.aura().none()) emit(matrices, consumers, light, Draw.aura(id, worn.aura(), time));
+		if (!worn.wings().none() && !Cosmetics.elytra(player)) {
 			matrices.push();
 			getContextModel().body.rotate(matrices);
-			emit(matrices, consumers, light, Draw.wings(worn.wings(), time, Cosmetics.pace(player)));
+			emit(matrices, consumers, light, Draw.wings(id, worn.wings(), time, player.getX(), player.getZ(), air));
 			matrices.pop();
 		}
 		if (!worn.hat().none()) {
@@ -40,7 +44,7 @@ public final class CosmeticsLayer extends FeatureRenderer<AbstractClientPlayerEn
 				matrices.scale(Cosmetics.HELMET, Cosmetics.HELMET, Cosmetics.HELMET);
 				matrices.translate(0, 0.25f, 0);
 			}
-			emit(matrices, consumers, light, Draw.hat(worn.hat(), time));
+			emit(matrices, consumers, light, Draw.hat(id, worn.hat(), time));
 			matrices.pop();
 		}
 	}
@@ -50,5 +54,6 @@ public final class CosmeticsLayer extends FeatureRenderer<AbstractClientPlayerEn
 		if (Draw.has(mesh, Mesh.SOLID)) Draw.mesh(mesh, Mesh.SOLID, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEntityCutoutNoCull(Cosmetics.WHITE))::vertex);
 		if (Draw.has(mesh, Mesh.CLEAR)) Draw.mesh(mesh, Mesh.CLEAR, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEntityTranslucent(Cosmetics.WHITE))::vertex);
 		if (Draw.has(mesh, Mesh.GLOW)) Draw.mesh(mesh, Mesh.GLOW, e.getPositionMatrix(), e.getNormalMatrix(), light, OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEntityTranslucentEmissive(Cosmetics.WHITE))::vertex);
+		if (Draw.has(mesh, Mesh.HALO)) Draw.halos(mesh, e.getPositionMatrix(), OverlayTexture.DEFAULT_UV, consumers.getBuffer(RenderLayer.getEyes(Cosmetics.GLOW))::vertex);
 	}
 }

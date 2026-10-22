@@ -28,6 +28,7 @@ public final class OppaClient implements ClientModInitializer {
 	private static void online(Minecraft mc) {
 		Social.tick(Platform.screen() instanceof MenuScreen menu && menu.onFriends() ? 5_000 : 20_000);
 		Wardrobe.tick();
+		dev.oppaclient.social.Chat.start();
 		Shots.watch(mc.gameDirectory.toPath().resolve("screenshots"), Keys.SHARE.isUnbound() ? "the share key" : Keys.SHARE.getTranslatedKeyMessage().getString());
 	}
 
@@ -40,6 +41,7 @@ public final class OppaClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(Keys::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(Badges::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(Presence::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(mc -> dev.oppaclient.perf.Limits.tick());
 		ClientTickEvents.END_CLIENT_TICK.register(OppaClient::online);
 		ClientTickEvents.END_CLIENT_TICK.register(dev.oppaclient.hud.Combat::tick);
 		dev.oppaclient.hud.Combat.register();

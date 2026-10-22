@@ -1,304 +1,279 @@
 package dev.oppaclient.look;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public final class Wings {
+	private static final int LIGHT = 1, BASE = 2, DARK = 3, MID = 4, ACCENT = 5, BONE = 6, CLEAR = 7, SHINE = 8, HOT = 9, SHADE = 10;
+	private static final Map<String, Sprite> sprites = new HashMap<>();
+	private static final int[] colors = new int[11];
+	private static final byte[] pens = new byte[11];
+
+	private record Shape(float cell, float depth, int root, int wrist, float rest, float open, float beat, float tilt) {}
+
 	private Wings() {}
 
-	public static void build(Mesh m, Look look, float time, float pace) {
+	private static Shape shape(String style) {
+		return switch (style) {
+			case "angel", "raven" -> new Shape(0.62f, 0.7f, 6, 13, 0.6f, 0.22f, 1f, 0.12f);
+			case "phoenix" -> new Shape(0.62f, 0.7f, 6, 13, 0.58f, 0.2f, 1.1f, 0.12f);
+			case "demon", "bat" -> new Shape(0.6f, 0.5f, 5, 12, 0.62f, 0.25f, 1f, 0.1f);
+			case "dragon" -> new Shape(0.66f, 0.55f, 5, 12, 0.62f, 0.25f, 0.85f, 0.1f);
+			case "butterfly" -> new Shape(0.7f, 0.4f, 12, 30, 0.55f, 0.3f, 2.2f, 0.05f);
+			case "fairy" -> new Shape(0.66f, 0.35f, 14, 30, 0.5f, 0.28f, 2.6f, 0.05f);
+			case "crystal" -> new Shape(0.8f, 0.9f, 10, 30, 0.55f, 0.3f, 0.7f, 0.08f);
+			case "mech" -> new Shape(0.6f, 0.9f, 4, 12, 0.6f, 0.22f, 0.8f, 0.12f);
+			default -> null;
+		};
+	}
+
+	public static void build(Mesh m, Look look, float time, float phase, float pace) {
 		if (look.none()) return;
-		int a = Mesh.opaque(look.primary()), b = Mesh.opaque(look.secondary());
-		String s = look.style();
-		boolean flutter = s.equals("butterfly") || s.equals("fairy");
-		float speed = flutter ? 2.6f + pace * 4f : 1.4f + pace * 5.5f;
-		float wave = (float) Math.sin(time * speed);
-		float spread = flutter ? 0.35f + 0.55f * (wave * 0.5f + 0.5f) : 0.42f + 0.22f * wave + pace * 0.1f;
-		float lift = flutter ? 0.05f : 0.16f + 0.1f * wave;
+		String style = look.style();
+		Shape shape = shape(style);
+		if (shape == null) return;
+		Sprite sprite = sprites.computeIfAbsent(style, Wings::sprite);
+		palette(style, Mesh.opaque(look.primary()), Mesh.opaque(look.secondary()));
+
+		float beat = phase * shape.beat;
+		float wave = (float) Math.sin(beat), lag = (float) Math.sin(beat - 0.9f);
+		float amp = 0.05f + 0.3f * pace;
+		float sweep = shape.rest + (shape.open - shape.rest) * pace + amp * 0.5f * wave;
+		float up = 0.08f + 0.12f * pace + amp * wave;
+		float fold = (0.28f - 0.22f * pace) + amp * 0.7f * lag;
+		float breathe = 0.02f * (float) Math.sin(time * 1.3f);
+
+		float cell = shape.cell;
+		float oy = -shape.root * cell;
 		for (int side = -1; side <= 1; side += 2) {
 			m.push();
-			m.translate(side * 1.4f, 2.6f, 2.4f);
-			m.scale(side, 1, 1);
-			m.rotateY(-spread);
-			m.rotateZ(-lift);
-			switch (s) {
-				case "angel" -> feathered(m, a, b, false, 1f);
-				case "raven" -> feathered(m, a, b, true, 0.95f);
-				case "phoenix" -> phoenix(m, a, b, time);
-				case "demon" -> membrane(m, a, b, 4, 1.05f, false);
-				case "dragon" -> membrane(m, a, b, 4, 1.3f, true);
-				case "bat" -> membrane(m, a, b, 3, 0.92f, false);
-				case "butterfly" -> butterfly(m, a, b);
-				case "fairy" -> fairy(m, a, b);
-				case "crystal" -> crystal(m, a, b, time);
-				case "mech" -> mech(m, a, b);
-				default -> {}
-			}
+			m.translate(side * 1.2f, 2.4f, 2.3f);
+			m.rotateX(-shape.tilt);
+			m.rotateZ(-side * (up + breathe));
+			m.rotateY(-side * sweep);
+			sprite.draw(m, colors, pens, cell, shape.depth, 0, shape.wrist, 0, oy, side);
+			float hinge = shape.wrist * cell;
+			m.translate(side * hinge, 0, 0);
+			m.rotateY(-side * fold);
+			m.rotateZ(-side * fold * 0.25f);
+			m.translate(-side * hinge, 0, 0);
+			sprite.draw(m, colors, pens, cell, shape.depth, shape.wrist, sprite.w, 0, oy, side);
 			m.pop();
 		}
 	}
 
-	private static void feather(Mesh m, float bx, float by, float z, float angle, float length, float width, int base, int tip) {
-		float dx = Shapes.cos(angle), dy = Shapes.sin(angle);
-		float px = -dy, py = dx;
-		float w0 = width * 0.42f, w1 = width * 0.5f, w2 = width * 0.36f;
-		float ax = bx + dx * length * 0.55f, ay = by + dy * length * 0.55f;
-		float cx = bx + dx * length * 0.88f, cy = by + dy * length * 0.88f;
-		float tx = bx + dx * length, ty = by + dy * length;
-		int mid = Mesh.mix(base, tip, 0.45f), late = Mesh.mix(base, tip, 0.85f);
-		m.quad(bx - px * w0, -(by - py * w0), z, bx + px * w0, -(by + py * w0), z, ax + px * w1, -(ay + py * w1), z, ax - px * w1, -(ay - py * w1), z, base, base, mid, mid);
-		m.quad(ax - px * w1, -(ay - py * w1), z, ax + px * w1, -(ay + py * w1), z, cx + px * w2, -(cy + py * w2), z, cx - px * w2, -(cy - py * w2), z, mid, mid, late, late);
-		m.tri(cx - px * w2, -(cy - py * w2), z, cx + px * w2, -(cy + py * w2), z, tx, -ty, z, late, late, tip);
+	private static void palette(String style, int a, int b) {
+		for (int i = 0; i < pens.length; i++) pens[i] = Mesh.SOLID;
+		colors[LIGHT] = Mesh.mix(a, 0xFFFFFFFF, 0.14f);
+		colors[BASE] = a;
+		colors[DARK] = Mesh.shade(a, 0.72f);
+		colors[MID] = Mesh.mix(a, b, 0.5f);
+		colors[ACCENT] = b;
+		colors[BONE] = Mesh.shade(b, 1.1f);
+		colors[CLEAR] = Mesh.alpha(a, 0.55f);
+		colors[SHINE] = Mesh.mix(b, 0xFFFFFFFF, 0.2f);
+		colors[HOT] = Mesh.mix(a, b, 0.35f);
+		colors[SHADE] = Mesh.shade(a, 0.84f);
+		pens[CLEAR] = Mesh.CLEAR;
+		pens[SHINE] = Mesh.BRIGHT;
+		pens[HOT] = Mesh.BRIGHT;
+		switch (style) {
+			case "angel", "raven" -> colors[BONE] = Mesh.mix(a, 0xFFFFFFFF, 0.24f);
+			case "demon", "dragon", "bat" -> {
+				colors[LIGHT] = Mesh.mix(a, 0xFFFFFFFF, 0.08f);
+				colors[BONE] = b;
+				colors[ACCENT] = Mesh.mix(b, 0xFFE8E2D0, 0.55f);
+			}
+			case "butterfly" -> {
+				colors[LIGHT] = Mesh.mix(a, 0xFFFFFFFF, 0.3f);
+				colors[MID] = Mesh.mix(a, 0xFFFFFFFF, 0.85f);
+			}
+			case "fairy" -> {
+				colors[SHINE] = Mesh.mix(b, 0xFFFFFFFF, 0.3f);
+				colors[CLEAR] = Mesh.alpha(Mesh.mix(a, b, 0.2f), 0.5f);
+				colors[LIGHT] = Mesh.alpha(Mesh.mix(a, 0xFFFFFFFF, 0.45f), 0.62f);
+				pens[LIGHT] = Mesh.CLEAR;
+			}
+			case "crystal" -> {
+				colors[LIGHT] = Mesh.mix(a, 0xFFFFFFFF, 0.35f);
+				colors[SHINE] = Mesh.mix(b, a, 0.25f);
+			}
+			case "mech" -> colors[BONE] = Mesh.shade(a, 0.55f);
+			default -> {}
+		}
 	}
 
-	private static float[] arm(float t) {
-		float x = 15.5f * t;
-		float y = 5.2f * (float) Math.sin(Math.PI * Math.min(1, t * 1.15f)) + 1.0f * t;
-		return new float[] {x, y};
+	private static Sprite sprite(String style) {
+		return switch (style) {
+			case "angel" -> feathered(false, false);
+			case "raven" -> feathered(true, false);
+			case "phoenix" -> feathered(false, true);
+			case "demon" -> membrane(4, 1f, false);
+			case "dragon" -> membrane(4, 1.12f, true);
+			case "bat" -> membrane(3, 0.82f, false);
+			case "butterfly" -> butterfly();
+			case "fairy" -> fairy();
+			case "crystal" -> crystal();
+			case "mech" -> mech();
+			default -> new Sprite(1, 1);
+		};
 	}
 
-	private static void feathered(Mesh m, int c, int tipColor, boolean ragged, float scale) {
-		m.push();
-		m.scale(scale, scale, 1);
-		int under = Mesh.shade(c, 0.86f);
-		int prim = 7;
-		for (int i = 0; i < prim; i++) {
-			float t = 0.55f + 0.45f * i / (prim - 1f);
-			float[] p = arm(t);
-			float angle = (float) Math.toRadians(-95 + 75 * (i / (prim - 1f)));
-			float len = 8.5f + 3.5f * (float) Math.sin(Math.PI * (0.35 + 0.6 * i / (prim - 1f)));
-			if (ragged && i % 2 == 1) len -= 1.4f;
-			feather(m, p[0], p[1], -0.05f * i, angle, len, 3.4f, under, tipColor);
-		}
-		int sec = 8;
-		for (int i = 0; i < sec; i++) {
-			float t = 0.04f + 0.52f * i / (sec - 1f);
-			float[] p = arm(t);
-			float angle = (float) Math.toRadians(-100 + 8 * (i / (sec - 1f)));
-			float len = 9.5f - 1.6f * i / (sec - 1f) + (ragged && i % 3 == 1 ? -1.2f : 0);
-			feather(m, p[0], p[1], 0.2f - 0.02f * i, angle, len, 3.1f, c, Mesh.mix(c, tipColor, 0.7f));
-		}
-		int cov = 9;
-		for (int i = 0; i < cov; i++) {
-			float t = 0.02f + 0.8f * i / (cov - 1f);
-			float[] p = arm(t);
-			float angle = (float) Math.toRadians(-105 + 30 * (i / (cov - 1f)));
-			feather(m, p[0], p[1] + 0.3f, 0.45f, angle, 3.8f + (i % 2) * 0.6f, 2.9f, Mesh.shade(c, 1.06f), c);
-		}
-		for (int i = 0; i < 12; i++) {
-			float t0 = i / 12f, t1 = (i + 1) / 12f;
-			float[] p0 = arm(t0), p1 = arm(t1);
-			m.quad(p0[0], -p0[1] - 0.55f, 0.5f, p1[0], -p1[1] - 0.55f, 0.5f, p1[0], -p1[1] + 0.6f, 0.5f, p0[0], -p0[1] + 0.6f, 0.5f, Mesh.shade(c, 1.08f));
-		}
-		m.pop();
+	private static float armX(float t) {
+		return 29f * t;
 	}
 
-	private static void phoenix(Mesh m, int flame, int tip, float time) {
-		m.push();
-		m.scale(1.05f, 1.05f, 1);
-		int deep = Mesh.mix(flame, 0xFF5A0A0A, 0.35f);
-		int n = 11;
-		for (int i = 0; i < n; i++) {
-			float t = 0.05f + 0.95f * i / (n - 1f);
-			float[] p = arm(t);
-			float flick = 0.06f * (float) Math.sin(time * 6 + i * 1.7f);
-			float angle = (float) Math.toRadians(-100 + 85 * Math.pow(i / (n - 1f), 1.3)) + flick;
-			float len = 9 + 6f * (float) Math.sin(Math.PI * (0.25 + 0.7 * i / (n - 1f)));
-			m.pen(Mesh.SOLID);
-			feather(m, p[0], p[1], 0.05f * i, angle, len * 0.82f, 2.4f, deep, flame);
-			m.pen(Mesh.GLOW);
-			feather(m, p[0], p[1], 0.05f * i + 0.12f, angle, len, 1.5f, Mesh.alpha(flame, 0.85f), Mesh.alpha(tip, 0.9f));
-		}
-		m.pen(Mesh.SOLID);
-		for (int i = 0; i < 8; i++) {
-			float t = 0.03f + 0.7f * i / 7f;
-			float[] p = arm(t);
-			feather(m, p[0], p[1] + 0.3f, 0.7f, (float) Math.toRadians(-100 + 25 * i / 7f), 3.8f, 2.4f, flame, Mesh.mix(flame, tip, 0.6f));
-		}
-		m.pop();
+	private static float armY(float t) {
+		return 6f - 5.2f * (float) Math.sin(Math.PI * Math.min(1, t * 1.25f)) + 3.2f * t * t;
 	}
 
-	private static void limb(Mesh m, float x0, float y0, float x1, float y1, float r0, float r1, int c) {
-		float dx = x1 - x0, dy = y1 - y0;
-		float len = (float) Math.sqrt(dx * dx + dy * dy);
-		if (len < 1e-4f) return;
-		float px = -dy / len, py = dx / len;
-		int dark = Mesh.shade(c, 0.8f);
-		float[][] p = {
-				{x0 + px * r0, y0 + py * r0, r0}, {x1 + px * r1, y1 + py * r1, r1},
-				{x1 - px * r1, y1 - py * r1, r1}, {x0 - px * r0, y0 - py * r0, r0}};
-		m.quad(p[0][0], -p[0][1], r0, p[1][0], -p[1][1], r1, p[2][0], -p[2][1], r1, p[3][0], -p[3][1], r0, c);
-		m.quad(p[3][0], -p[3][1], -r0, p[2][0], -p[2][1], -r1, p[1][0], -p[1][1], -r1, p[0][0], -p[0][1], -r0, dark);
-		m.quad(p[0][0], -p[0][1], -r0, p[1][0], -p[1][1], -r1, p[1][0], -p[1][1], r1, p[0][0], -p[0][1], r0, c);
-		m.quad(p[3][0], -p[3][1], r0, p[2][0], -p[2][1], r1, p[2][0], -p[2][1], -r1, p[3][0], -p[3][1], -r0, dark);
+	private static Sprite feathered(boolean ragged, boolean flame) {
+		Sprite s = new Sprite(32, 30);
+		int prim = 8;
+		for (int i = prim - 1; i >= 0; i--) {
+			float k = i / (prim - 1f);
+			float t = 0.5f + 0.5f * k;
+			float angle = (float) Math.toRadians(96 - 62 * Math.pow(k, 1.2));
+			float len = 15 + 5 * (float) Math.sin(Math.PI * (0.25 + 0.6 * k)) - (ragged && i % 2 == 1 ? 2.5f : 0) + (flame ? 2.5f * k : 0);
+			feather(s, armX(t), armY(t) + 1, angle, len, 1.9f, flame, i % 2 == 0 ? BASE : SHADE);
+		}
+		int sec = 7;
+		for (int i = sec - 1; i >= 0; i--) {
+			float k = i / (sec - 1f);
+			float t = 0.03f + 0.47f * k;
+			float angle = (float) Math.toRadians(100 - 6 * k);
+			float len = 15.5f - 2.5f * k - (ragged && i % 3 == 1 ? 2f : 0) + (flame ? 1.5f : 0);
+			feather(s, armX(t), armY(t) + 1, angle, len, 2.1f, flame, i % 2 == 0 ? SHADE : BASE);
+		}
+		for (int i = 0; i < 9; i++) {
+			float t = 0.02f + 0.86f * i / 8f;
+			float ex = armX(t) + 1.2f, ey = armY(t) + 4.6f + (i % 2) * 0.8f;
+			s.capsule(armX(t), armY(t) + 0.5f, ex, ey, 2.0f, 1.5f, (a, d) -> a > 0.75f ? MID : LIGHT);
+		}
+		for (int i = 0; i < 24; i++) {
+			float t0 = i / 24f, t1 = (i + 1) / 24f;
+			s.line(armX(t0), armY(t0), armX(t1), armY(t1), 1.05f, BONE);
+		}
+		return s;
 	}
 
-	private static void membrane(Mesh m, int skin, int bone, int fingers, float scale, boolean dragon) {
-		m.push();
-		m.scale(scale, scale, 1);
-		float[] root = {0, 0}, elbow = {5.5f, 4.2f}, wrist = {10.5f, 6.8f};
+	private static void feather(Sprite s, float bx, float by, float angle, float len, float r, boolean flame, int body) {
+		float ex = bx + (float) Math.cos(angle) * len, ey = by + (float) Math.sin(angle) * len;
+		s.capsule(bx, by, ex, ey, r, r * 0.55f, (t, d) -> {
+			if (flame) return t > 0.82f ? SHINE : t > 0.55f ? HOT : body;
+			return t > 0.86f ? ACCENT : t > 0.68f ? MID : body;
+		});
+	}
+
+	private static Sprite membrane(int fingers, float scale, boolean dragon) {
+		Sprite s = new Sprite(34, 32);
+		float k = scale;
+		float rx = 0, ry = 5, ex = 7 * k, ey = 1.5f * k + 1, wx = 13 * k, wy = 0;
 		float[][] tips = fingers == 4
-				? new float[][] {{19.5f, 7.6f}, {18.5f, 0.5f}, {15.5f, -6.5f}, {10.5f, -10.5f}}
-				: new float[][] {{17.5f, 5.0f}, {15.0f, -3.5f}, {10.0f, -9.0f}};
-		float[] body = {0.6f, -9.5f};
-		int light = Mesh.mix(skin, 0xFFFFFFFF, 0.12f), dark = Mesh.shade(skin, 0.75f);
+				? new float[][] {{30 * k, 2 * k}, {28 * k, 11 * k}, {23 * k, 20 * k}, {15 * k, 25 * k}}
+				: new float[][] {{27 * k, 6 * k}, {22 * k, 16 * k}, {14 * k, 23 * k}};
+		float bx = 2, by = 21 * k;
 		float[][] edge = new float[tips.length + 1][];
 		System.arraycopy(tips, 0, edge, 0, tips.length);
-		edge[tips.length] = body;
+		edge[tips.length] = new float[] {bx, by};
 		for (int f = 0; f + 1 < edge.length; f++) {
 			float[] a = edge[f], b = edge[f + 1];
-			float mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-			float sag = f + 2 == edge.length ? 0.32f : 0.24f;
-			int steps = 6;
-			for (int i = 0; i < steps; i++) {
-				float t0 = (float) i / steps, t1 = (float) (i + 1) / steps;
-				float s0 = sag * (float) Math.sin(Math.PI * t0), s1 = sag * (float) Math.sin(Math.PI * t1);
-				float ex0 = a[0] + (b[0] - a[0]) * t0 + (wrist[0] - mx) * s0, ey0 = a[1] + (b[1] - a[1]) * t0 + (wrist[1] - my) * s0;
-				float ex1 = a[0] + (b[0] - a[0]) * t1 + (wrist[0] - mx) * s1, ey1 = a[1] + (b[1] - a[1]) * t1 + (wrist[1] - my) * s1;
-				m.tri(wrist[0], -wrist[1], 0, ex0, -ey0, 0, ex1, -ey1, 0, light, i == 0 && f > 0 ? light : dark, i + 1 == steps && f + 2 < edge.length ? light : dark);
-			}
+			float sag = f + 2 == edge.length ? 0.22f : 0.3f;
+			float cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
+			float nx = wx - cx, ny = wy - cy, nl = (float) Math.hypot(nx, ny);
+			float chord = (float) Math.hypot(b[0] - a[0], b[1] - a[1]);
+			s.triangle(wx, wy, a[0], a[1], b[0], b[1], (wrist, far) -> {
+				float reach = 1 - wrist;
+				float along = reach < 1e-4f ? 0.5f : far / reach;
+				float cut = sag * chord * (float) Math.sin(Math.PI * along) / nl;
+				if (reach > 1 - cut) return 0;
+				return reach > 0.8f - cut ? DARK : reach > 0.42f ? BASE : LIGHT;
+			});
 		}
-		m.quad(root[0], -root[1], 0, elbow[0], -elbow[1], 0, wrist[0], -wrist[1], 0, body[0], -body[1], 0, light, light, light, dark);
-		limb(m, root[0], root[1], elbow[0], elbow[1], 0.75f, 0.6f, bone);
-		limb(m, elbow[0], elbow[1], wrist[0], wrist[1], 0.6f, 0.5f, bone);
-		for (float[] t : tips) limb(m, wrist[0], wrist[1], t[0], t[1], 0.42f, 0.12f, bone);
+		s.triangle(rx, ry, wx, wy, bx, by, (u, w) -> LIGHT);
+		s.triangle(rx, ry, ex, ey, wx, wy, (u, w) -> LIGHT);
+		s.line(rx, ry, ex, ey, 1.2f, BONE);
+		s.line(ex, ey, wx, wy, 1.0f, BONE);
+		for (float[] t : tips) s.capsule(wx, wy, t[0], t[1], 0.85f, 0.45f, (a, d) -> BONE);
 		if (dragon) {
-			int claw = Mesh.mix(bone, 0xFFE8E2D0, 0.5f);
-			limb(m, wrist[0], wrist[1], wrist[0] + 1.2f, wrist[1] + 2.6f, 0.4f, 0.05f, claw);
+			s.capsule(wx, wy, wx - 1.5f, wy - 3.5f, 0.9f, 0.3f, (a, d) -> ACCENT);
 			for (int i = 0; i < 4; i++) {
-				float t = 0.2f + 0.2f * i;
-				float x = elbow[0] * (1 - t) + wrist[0] * t, y = elbow[1] * (1 - t) + wrist[1] * t;
-				limb(m, x, y, x + 0.3f, y + 1.3f, 0.28f, 0.02f, claw);
+				float t = 0.15f + 0.22f * i;
+				float x = rx + (ex - rx) * t * 2, y = ry + (ey - ry) * t * 2;
+				if (t > 0.5f) {
+					x = ex + (wx - ex) * (t - 0.5f) * 2;
+					y = ey + (wy - ey) * (t - 0.5f) * 2;
+				}
+				s.capsule(x, y - 0.5f, x + 0.4f, y - 2.4f, 0.7f, 0.2f, (a, d) -> ACCENT);
 			}
 		}
-		m.pop();
+		return s;
 	}
 
-	private static void lobe(Mesh m, float from, float to, float reach, float roundness, int fill, int edge, float z) {
-		int steps = 14;
-		float inner = 0.8f;
-		for (int i = 0; i < steps; i++) {
-			double a0 = Math.toRadians(from + (to - from) * i / steps), a1 = Math.toRadians(from + (to - from) * (i + 1) / steps);
-			float k0 = reach * (float) Math.pow(Math.sin(Math.PI * i / steps), roundness);
-			float k1 = reach * (float) Math.pow(Math.sin(Math.PI * (i + 1) / steps), roundness);
-			float x0 = Shapes.cos(a0) * k0, y0 = Shapes.sin(a0) * k0, x1 = Shapes.cos(a1) * k1, y1 = Shapes.sin(a1) * k1;
-			m.tri(0, 0, z, x0 * inner, -y0 * inner, z, x1 * inner, -y1 * inner, z, Mesh.shade(fill, 0.8f), fill, fill);
-			m.quad(x0 * inner, -y0 * inner, z, x0, -y0, z, x1, -y1, z, x1 * inner, -y1 * inner, z, edge);
+	private static Sprite butterfly() {
+		Sprite s = new Sprite(26, 30);
+		s.ellipse(9.5f, 7f, 9.5f, 6.5f, -0.65f, (d, a) -> d > 0.86f ? ACCENT : d > 0.55f ? LIGHT : BASE);
+		s.ellipse(7f, 19f, 6.2f, 4.4f, 0.75f, (d, a) -> d > 0.82f ? ACCENT : d > 0.5f ? LIGHT : BASE);
+		float[][] spots = {{14.5f, 3.6f, 1.3f}, {16.6f, 6.6f, 1f}, {11.5f, 2.6f, 0.9f}, {9.5f, 21.5f, 1f}};
+		for (float[] p : spots) s.ellipse(p[0], p[1], p[2], p[2], 0, (d, a) -> MID);
+		s.line(0.5f, 12, 13, 4.5f, 0.45f, DARK);
+		s.line(0.5f, 12, 10, 10, 0.45f, DARK);
+		s.line(0.5f, 12, 9, 20.5f, 0.45f, DARK);
+		s.line(0, 11, 1, 13.5f, 0.8f, ACCENT);
+		return s;
+	}
+
+	private static Sprite fairy() {
+		Sprite s = new Sprite(26, 32);
+		float[][] lobes = {{-0.72f, 21, 5.6f}, {0.62f, 13, 3.8f}};
+		for (float[] l : lobes) {
+			float c = (float) Math.cos(l[0]), sn = (float) Math.sin(l[0]);
+			s.ellipse(0.5f + c * l[1] / 2, 12 + sn * l[1] / 2, l[1] / 2, l[2], l[0], (d, a) -> CLEAR);
 		}
-	}
-
-	private static void butterfly(Mesh m, int fill, int edge) {
-		lobe(m, -10, 95, 14, 0.55f, fill, edge, 0);
-		lobe(m, -80, 5, 9.5f, 0.7f, Mesh.mix(fill, 0xFFFFFFFF, 0.15f), edge, 0.05f);
-		int spot = Mesh.mix(fill, 0xFFFFFFFF, 0.75f);
-		float[][] spots = {{9.5f, 7.5f, 0.9f}, {11.2f, 4.2f, 0.7f}, {7.2f, 9.6f, 0.6f}, {6.2f, -4.2f, 0.6f}};
-		for (float[] s : spots) {
-			m.push();
-			m.translate(s[0], -s[1], 0.12f);
-			m.rotateX((float) Math.PI / 2);
-			m.disc(0, s[2], 8, spot, false);
-			m.disc(0, s[2], 8, spot, true);
-			m.pop();
+		s.outline(CLEAR, SHINE);
+		for (float[] l : lobes) {
+			float c = (float) Math.cos(l[0]), sn = (float) Math.sin(l[0]);
+			s.line(0.5f, 12, 0.5f + c * l[1] * 0.78f, 12 + sn * l[1] * 0.78f, 0.3f, LIGHT);
+			s.line(0.5f + c * l[1] * 0.35f, 12 + sn * l[1] * 0.35f, 0.5f + c * l[1] * 0.62f + sn * l[2] * 0.5f, 12 + sn * l[1] * 0.62f - c * l[2] * 0.5f, 0.3f, LIGHT);
 		}
-		limb(m, 0, 0, 0.5f, -0.5f, 0.35f, 0.3f, edge);
+		return s;
 	}
 
-	private static void fairy(Mesh m, int wing, int vein) {
-		m.pen(Mesh.CLEAR);
-		int fill = Mesh.alpha(wing, 0.62f), edge = Mesh.alpha(Mesh.mix(wing, 0xFFFFFFFF, 0.4f), 0.9f);
-		float[][] leaves = {{58, 21, 3.0f}, {30, 16, 2.4f}, {-24, 12.5f, 2.0f}, {-48, 9.5f, 1.7f}};
-		for (int i = 0; i < leaves.length; i++) {
-			float[] l = leaves[i];
-			m.push();
-			m.rotateZ((float) Math.toRadians(-l[0]));
-			leaf(m, l[1], l[2], fill, edge, 0.04f * i);
-			m.pen(Mesh.GLOW);
-			m.quad(0, -0.12f, 0.06f * i + 0.01f, l[1] * 0.9f, -0.04f, 0.06f * i + 0.01f, l[1] * 0.9f, 0.04f, 0.06f * i + 0.01f, 0, 0.12f, 0.06f * i + 0.01f, Mesh.alpha(vein, 0.7f));
-			m.pen(Mesh.CLEAR);
-			m.pop();
+	private static Sprite crystal() {
+		Sprite s = new Sprite(30, 30);
+		float[][] shards = {{-1.05f, 13, 2.2f}, {-0.6f, 18, 2.7f}, {-0.15f, 16, 2.5f}, {0.32f, 12.5f, 2.2f}, {0.78f, 9, 1.8f}};
+		for (float[] p : shards) {
+			float c = (float) Math.cos(p[0]), sn = (float) Math.sin(p[0]);
+			float bx = 1, by = 10, mx = bx + c * p[1] * 0.32f, my = by + sn * p[1] * 0.32f, tx = bx + c * p[1], ty = by + sn * p[1];
+			float nx = -sn * p[2], ny = c * p[2];
+			s.triangle(tx, ty, mx + nx, my + ny, mx - nx, my - ny, (tip, right) -> 1 - tip - right > right ? LIGHT : BASE);
+			s.triangle(bx, by, mx + nx, my + ny, mx - nx, my - ny, (root, right) -> 1 - root - right > right ? LIGHT : BASE);
+			s.line(bx + c * 2.5f, by + sn * 2.5f, bx + c * p[1] * 0.78f, by + sn * p[1] * 0.78f, 0.38f, SHINE);
 		}
-		m.pen(Mesh.SOLID);
+		s.ellipse(1.5f, 10, 2.4f, 2.4f, 0, (d, a) -> d < 0.6f ? SHINE : ACCENT);
+		return s;
 	}
 
-	private static void leaf(Mesh m, float length, float width, int fill, int edge, float z) {
-		int steps = 10;
-		for (int i = 0; i < steps; i++) {
-			float t0 = (float) i / steps, t1 = (float) (i + 1) / steps;
-			float w0 = width * (float) Math.sin(Math.PI * Math.pow(t0, 0.8)), w1 = width * (float) Math.sin(Math.PI * Math.pow(t1, 0.8));
-			m.quad(length * t0, -w0, z, length * t1, -w1, z, length * t1, w1, z, length * t0, w0, z, fill, fill, fill, fill);
-			m.quad(length * t0, -w0 - 0.25f, z, length * t1, -w1 - 0.25f, z, length * t1, -w1, z, length * t0, -w0, z, edge);
-			m.quad(length * t0, w0, z, length * t1, w1, z, length * t1, w1 + 0.25f, z, length * t0, w0 + 0.25f, z, edge);
-		}
-	}
-
-	private static void shard(Mesh m, float angle, float length, float width, int base, int tip) {
-		m.push();
-		m.rotateZ(-angle);
-		float w = width / 2, d = width * 0.35f;
-		float[][] ring = {{0, -w}, {d, 0}, {0, w}, {-d, 0}};
-		float neck = length * 0.18f;
-		for (int i = 0; i < 4; i++) {
-			float[] a = ring[i], b = ring[(i + 1) % 4];
-			int shadeA = Mesh.shade(base, 0.85f + 0.08f * i);
-			m.tri(0, 0, 0, neck, a[1], a[0], neck, b[1], b[0], Mesh.shade(base, 0.7f), shadeA, shadeA);
-			m.tri(neck, b[1], b[0], neck, a[1], a[0], length, 0, 0, shadeA, shadeA, tip);
-		}
-		m.pop();
-	}
-
-	private static void crystal(Mesh m, int c, int glow, float time) {
-		float[][] shards = {{-0.5f, 9, 2.0f}, {-0.2f, 13, 2.4f}, {0.1f, 17, 2.7f}, {0.38f, 20.5f, 2.9f}, {0.66f, 19, 2.8f}, {0.94f, 15.5f, 2.5f}, {1.2f, 11.5f, 2.1f}, {1.45f, 8, 1.7f}};
-		float pulse = 0.75f + 0.25f * (float) Math.sin(time * 2.2f);
-		for (float[] s : shards) {
-			m.pen(Mesh.SOLID);
-			shard(m, s[0], s[1], s[2], c, Mesh.mix(c, glow, 0.6f));
-			m.pen(Mesh.GLOW);
-			m.push();
-			m.rotateZ(-s[0]);
-			m.quad(1.5f, -0.18f, 0, s[1] * 0.92f, -0.05f, 0, s[1] * 0.92f, 0.05f, 0, 1.5f, 0.18f, 0, Mesh.alpha(glow, pulse));
-			m.pop();
-		}
-		m.pen(Mesh.SOLID);
-		m.gem(0, 0, 0, 1.1f, Mesh.mix(c, glow, 0.5f), glow);
-	}
-
-	private static void mech(Mesh m, int plate, int joint) {
-		int dark = Mesh.shade(plate, 0.72f), light = Mesh.shade(plate, 1.12f);
-		float[] root = {0, 0}, wrist = {9.5f, 6};
-		limb(m, root[0], root[1], wrist[0], wrist[1], 0.7f, 0.6f, dark);
-		limb(m, wrist[0], wrist[1], 16, 4, 0.55f, 0.35f, dark);
+	private static Sprite mech() {
+		Sprite s = new Sprite(32, 30);
 		int plates = 8;
-		for (int i = 0; i < plates; i++) {
-			float t = i / (plates - 1f);
-			float bx, by;
-			if (t < 0.55f) {
-				float u = t / 0.55f;
-				bx = root[0] + (wrist[0] - root[0]) * u;
-				by = root[1] + (wrist[1] - root[1]) * u;
-			} else {
-				float u = (t - 0.55f) / 0.45f;
-				bx = wrist[0] + (16 - wrist[0]) * u;
-				by = wrist[1] + (4 - wrist[1]) * u;
-			}
-			float angle = (float) Math.toRadians(-98 + 70 * Math.pow(t, 1.4));
-			float len = 7 + 5 * (float) Math.sin(Math.PI * (0.3 + 0.6 * t));
-			m.push();
-			m.translate(bx, -by, -0.1f * i);
-			m.rotateZ(-angle);
-			m.box(0.4f, -1.05f, -0.22f, len, 1.05f, 0.22f, light, plate, dark);
-			m.box(len - 1.4f, -1.15f, -0.3f, len - 0.6f, 1.15f, 0.3f, joint);
-			m.box(1.0f, -0.25f, 0.22f, 1.6f, 0.25f, 0.38f, joint);
-			m.pop();
+		for (int i = plates - 1; i >= 0; i--) {
+			float k = i / (plates - 1f);
+			float t = 0.04f + 0.92f * k;
+			float angle = (float) Math.toRadians(98 - 64 * Math.pow(k, 1.3));
+			float len = 12 + 5 * (float) Math.sin(Math.PI * (0.3 + 0.6 * k));
+			float bx = armX(t), by = armY(t) + 1;
+			float ex = bx + (float) Math.cos(angle) * len, ey = by + (float) Math.sin(angle) * len;
+			s.capsule(bx, by, ex, ey, 1.6f, 1.6f, (a, d) -> a > 0.9f ? MID : d > 0.75f ? DARK : a < 0.12f ? ACCENT : BASE);
 		}
-		m.push();
-		m.rotateX((float) Math.PI / 2);
-		Shapes.loft(m, new float[] {-0.6f, 0.6f}, new float[] {1.5f, 1.5f}, new float[2], new float[2], new int[] {joint, Mesh.shade(joint, 0.8f)}, 10, 2, 0.15f);
-		m.disc(-0.6f, 1.5f, 10, joint, true);
-		m.disc(0.6f, 1.5f, 10, joint, false);
-		m.pop();
-		m.push();
-		m.translate(wrist[0], -wrist[1], 0);
-		m.rotateX((float) Math.PI / 2);
-		Shapes.loft(m, new float[] {-0.5f, 0.5f}, new float[] {1.1f, 1.1f}, new float[2], new float[2], new int[] {joint, Mesh.shade(joint, 0.8f)}, 10, 2, 0.15f);
-		m.disc(-0.5f, 1.1f, 10, joint, true);
-		m.disc(0.5f, 1.1f, 10, joint, false);
-		m.pop();
+		for (int i = 0; i < 24; i++) {
+			float t0 = i / 24f, t1 = (i + 1) / 24f;
+			s.line(armX(t0), armY(t0), armX(t1), armY(t1), 1.25f, BONE);
+		}
+		for (int i = 0; i < 4; i++) {
+			float t = 0.05f + 0.3f * i;
+			s.ellipse(armX(t), armY(t), 1.3f, 1.3f, 0, (d, a) -> ACCENT);
+		}
+		return s;
 	}
 }

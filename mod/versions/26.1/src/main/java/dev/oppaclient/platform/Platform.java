@@ -94,8 +94,21 @@ public final class Platform {
 		show(new net.minecraft.client.gui.screens.TitleScreen());
 	}
 
+	public static boolean singleplayer() {
+		return Minecraft.getInstance().hasSingleplayerServer();
+	}
+
+	public static int openLan() {
+		net.minecraft.client.server.IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
+		if (server == null) return -1;
+		if (server.isPublished()) return server.getPort();
+		int port = dev.oppaclient.social.Hosting.freePort();
+		return port > 0 && server.publishServer(server.getDefaultGameType(), false, port) ? port : -1;
+	}
+
 	public static void join(String address) {
 		Minecraft mc = Minecraft.getInstance();
+		if (dev.oppaclient.social.Hosting.redirect(address, a -> mc.execute(() -> join(a)))) return;
 		leave();
 		net.minecraft.client.multiplayer.ServerData info = new net.minecraft.client.multiplayer.ServerData(address, address, net.minecraft.client.multiplayer.ServerData.Type.OTHER);
 		net.minecraft.client.gui.screens.ConnectScreen.startConnecting(new net.minecraft.client.gui.screens.TitleScreen(), mc,

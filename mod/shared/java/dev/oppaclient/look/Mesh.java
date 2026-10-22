@@ -3,7 +3,7 @@ package dev.oppaclient.look;
 import java.util.Arrays;
 
 public final class Mesh {
-	public static final byte SOLID = 0, CLEAR = 1, GLOW = 2, BRIGHT = 3;
+	public static final byte SOLID = 0, CLEAR = 1, GLOW = 2, BRIGHT = 3, HALO = 4;
 
 	private float[] pos = new float[12 * 256];
 	private float[] normal = new float[3 * 256];
@@ -155,6 +155,15 @@ public final class Mesh {
 
 	public void tri(float x0, float y0, float z0, float x1, float y1, float z1, float x2, float y2, float z2, int c0, int c1, int c2) {
 		quad(x0, y0, z0, x1, y1, z1, x2, y2, z2, x2, y2, z2, c0, c1, c2, c2);
+	}
+
+	public void halo(float x, float y, float z, float r, int c) {
+		if ((c >>> 24) < 3) return;
+		byte was = pen;
+		pen = HALO;
+		quad(x, y, z, x, y, z, x, y, z, x, y, z, c);
+		pen = was;
+		normal[(quads - 1) * 3] = r * (float) Math.sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
 	}
 
 	public void box(float x0, float y0, float z0, float x1, float y1, float z1, int c) {

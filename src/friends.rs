@@ -1,10 +1,11 @@
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::glib;
 
+use crate::chat::{self, Event};
 use crate::images;
 use crate::instance::now;
 use crate::net;
@@ -20,6 +21,23 @@ struct Page {
     first: Cell<bool>,
     busy: Cell<bool>,
     again: Cell<bool>,
+    talk: Talk,
+}
+
+#[derive(Default)]
+struct Talk {
+    online: Cell<bool>,
+    buttons: RefCell<HashMap<String, gtk::Button>>,
+    unread: RefCell<HashMap<String, i64>>,
+    threads: RefCell<HashMap<String, Vec<chat::Message>>>,
+    view: RefCell<Option<View>>,
+}
+
+struct View {
+    uuid: String,
+    name: String,
+    list: gtk::Box,
+    scroll: gtk::ScrolledWindow,
 }
 
 pub fn page(app: &Rc<App>) -> gtk::Widget {
@@ -49,7 +67,21 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         first: Cell::new(true),
         busy: Cell::new(false),
         again: Cell::new(false),
+        talk: Talk::default(),
     });
+
+    let events = chat::events();
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        app,
+        #[weak]
+        p,
+        async move {
+            while let Ok(event) = events.recv().await {
+                heard(&app, &p, event);
+            }
+        }
+    ));
 
     let submit = glib::clone!(
         #[weak]
@@ -90,8 +122,8 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         #[strong]
         p,
         async move {
-            loop {
-                net::bg(site::token_changed()).await;
+            let mut token = site::token_watch();
+            while token.changed().await.is_ok() {
                 refresh(&app, &p);
             }
         }
@@ -164,7 +196,7 @@ fn notify_invites(app: &Rc<App>, p: &Page, social: &Social) {
             continue;
         }
         let toast = adw::Toast::builder()
-            .title(glib::markup_escape_text(&format!("{} invited you to {}", inv.name, inv.server)))
+            .title(glib::markup_escape_text(&format!("{} invited you to {}", inv.name, place(&inv.server))))
             .button_label("Join")
             .timeout(15)
             .build();
@@ -186,13 +218,14 @@ fn section(list: &gtk::Box, title: &str) {
 
 fn render(app: &Rc<App>, p: &Rc<Page>, social: &Social) {
     clear(&p.list);
+    p.talk.buttons.borrow_mut().clear();
     if !social.invites.is_empty() {
         section(&p.list, "Invites");
         for inv in &social.invites {
             let join_button = gtk::Button::builder().label("Join").css_classes(["pill", "friend-action"]).valign(gtk::Align::Center).build();
             let (a, server, game) = (app.clone(), inv.server.clone(), inv.game.clone());
             join_button.connect_clicked(move |_| join(&a, &server, &game));
-            p.list.append(&person(&inv.name, None, &format!("Invited you to {}", inv.server), &[join_button.upcast()]));
+            p.list.append(&person(&inv.name, None, &format!("Invited you to {}", place(&inv.server)), &[join_button.upcast()]));
         }
     }
     if !social.incoming.is_empty() {
@@ -226,7 +259,14 @@ fn render(app: &Rc<App>, p: &Rc<Page>, social: &Social) {
             b.connect_clicked(move |_| join(&a, &server, &game));
             buttons.push(b.upcast());
         }
-        let more = gtk::MenuButton::builder().icon_name("view-more-symbolic").css_classes(["flat", "circular"]).valign(gtk::Align::Center).build();
+        let talk = gtk::Button::builder().css_classes(["pill", "flat", "friend-action"]).valign(gtk::Align::Center).build();
+        let key = chat::plain(&f.uuid);
+        label_talk(&talk, p.talk.unread.borrow().get(&key).copied().unwrap_or(0));
+        let (a, pp, uuid, name) = (app.clone(), p.clone(), f.uuid.clone(), f.name.clone());
+        talk.connect_clicked(move |_| open_chat(&a, &pp, &uuid, &name));
+        p.talk.buttons.borrow_mut().insert(key, talk.clone());
+        buttons.push(talk.upcast());
+                let more = gtk::MenuButton::builder().icon_name("view-more-symbolic").css_classes(["flat", "circular"]).valign(gtk::Align::Center).build();
         let remove = gtk::Button::builder().label(format!("Remove {}", f.name)).css_classes(["flat", "model-row"]).build();
         let pop = gtk::Popover::builder().css_classes(["menu"]).child(&remove).build();
         more.set_popover(Some(&pop));
@@ -244,6 +284,174 @@ fn render(app: &Rc<App>, p: &Rc<Page>, social: &Social) {
     }
 }
 
+fn label_talk(button: &gtk::Button, unread: i64) {
+    button.set_label(&if unread > 0 { format!("Message | {unread}") } else { "Message".into() });
+}
+
+fn relabel(p: &Page, uuid: &str) {
+    let n = p.talk.unread.borrow().get(uuid).copied().unwrap_or(0);
+    if let Some(b) = p.talk.buttons.borrow().get(uuid) {
+        label_talk(b, n);
+    }
+}
+
+fn viewing(p: &Page) -> Option<String> {
+    p.talk.view.borrow().as_ref().map(|v| v.uuid.clone())
+}
+
+fn heard(app: &Rc<App>, p: &Rc<Page>, event: Event) {
+    match event {
+        Event::Online(on) => p.talk.online.set(on),
+        Event::Message(m) => {
+            let mine = m.from == chat::me();
+            let other = if mine { chat::plain(&m.to) } else { chat::plain(&m.from) };
+            {
+                let mut threads = p.talk.threads.borrow_mut();
+                let thread = threads.entry(other.clone()).or_default();
+                if thread.iter().any(|x| x.id == m.id) {
+                    return;
+                }
+                thread.push(m.clone());
+            }
+            if viewing(p).as_deref() == Some(other.as_str()) {
+                if !mine {
+                    chat::read(&other);
+                }
+                show_thread(p);
+            } else if !mine {
+                *p.talk.unread.borrow_mut().entry(other.clone()).or_default() += 1;
+                relabel(p, &other);
+                let short: String = m.text.chars().take(60).collect();
+                app.toast(&format!("{}: {short}", m.name));
+            }
+        }
+        Event::History(with, messages) => {
+            {
+                let mut threads = p.talk.threads.borrow_mut();
+                let thread = threads.entry(with.clone()).or_default();
+                for m in messages {
+                    if !thread.iter().any(|x| x.id == m.id) {
+                        thread.push(m);
+                    }
+                }
+                thread.sort_by_key(|m| m.id);
+            }
+            if viewing(p).as_deref() == Some(with.as_str()) {
+                show_thread(p);
+            }
+        }
+        Event::Unread(counts) => {
+            let open = viewing(p);
+            let mut unread = p.talk.unread.borrow_mut();
+            unread.clear();
+            for (k, n) in counts {
+                let k = chat::plain(&k);
+                if open.as_deref() != Some(k.as_str()) {
+                    unread.insert(k, n);
+                }
+            }
+            drop(unread);
+            let keys: Vec<String> = p.talk.buttons.borrow().keys().cloned().collect();
+            for k in keys {
+                relabel(p, &k);
+            }
+        }
+        Event::Refused(e) => app.toast(&format!("Message not sent: {e}")),
+    }
+}
+
+fn show_thread(p: &Page) {
+    let view = p.talk.view.borrow();
+    let Some(v) = view.as_ref() else { return };
+    while let Some(c) = v.list.first_child() {
+        v.list.remove(&c);
+    }
+    let threads = p.talk.threads.borrow();
+    let thread = threads.get(&v.uuid).map(Vec::as_slice).unwrap_or_default();
+    if thread.is_empty() {
+        let hint = if p.talk.online.get() { format!("Say hi to {}.", v.name) } else { "Connecting to chat…".into() };
+        v.list.append(&gtk::Label::builder().label(hint).xalign(0.0).css_classes(["dim-label"]).build());
+    }
+    let me = chat::me();
+    let mut last = String::new();
+    for m in thread {
+        if m.from != last {
+            let who = if m.from == me { "You".to_string() } else { v.name.clone() };
+            v.list.append(&gtk::Label::builder().label(who).xalign(0.0).margin_top(10).css_classes(["dim-label", "caption"]).build());
+            last = m.from.clone();
+        }
+        let text = gtk::Label::builder().label(&m.text).xalign(0.0).wrap(true).wrap_mode(gtk::pango::WrapMode::WordChar).selectable(true).build();
+        if m.from == me {
+            text.add_css_class("dim-label");
+        }
+        v.list.append(&text);
+    }
+    let scroll = v.scroll.clone();
+    glib::idle_add_local_once(move || {
+        let adj = scroll.vadjustment();
+        adj.set_value(adj.upper());
+    });
+}
+
+fn open_chat(app: &Rc<App>, p: &Rc<Page>, uuid: &str, name: &str) {
+    let key = chat::plain(uuid);
+    let list = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).margin_start(20).margin_end(20).margin_top(8).margin_bottom(12).build();
+    let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(&list).build();
+    let entry = gtk::Entry::builder().placeholder_text(format!("Message {name}")).hexpand(true).max_length(500).build();
+    let send = gtk::Button::builder().label("Send").css_classes(["pill", "suggested-action"]).build();
+    let bar = gtk::Box::builder().spacing(8).margin_start(16).margin_end(16).margin_top(8).margin_bottom(16).build();
+    bar.append(&entry);
+    bar.append(&send);
+    let body = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    body.append(&scroll);
+    body.append(&bar);
+    let view = adw::ToolbarView::new();
+    view.add_top_bar(&adw::HeaderBar::new());
+    view.set_content(Some(&body));
+    let dialog = adw::Dialog::builder().title(name).content_width(460).content_height(560).child(&view).build();
+
+    *p.talk.view.borrow_mut() = Some(View { uuid: key.clone(), name: name.to_string(), list, scroll });
+    p.talk.unread.borrow_mut().remove(&key);
+    relabel(p, &key);
+    show_thread(p);
+    chat::open(&key);
+
+    let submit = glib::clone!(
+        #[weak]
+        entry,
+        #[weak]
+        app,
+        #[strong]
+        p,
+        #[strong]
+        key,
+        move || {
+            let text = entry.text().to_string();
+            if text.trim().is_empty() {
+                return;
+            }
+            if !p.talk.online.get() {
+                app.toast("Chat is offline. Try again in a moment.");
+                return;
+            }
+            chat::send(&key, &text);
+            entry.set_text("");
+        }
+    );
+    let s = submit.clone();
+    send.connect_clicked(move |_| s());
+    entry.connect_activate(move |_| submit());
+    dialog.connect_closed(glib::clone!(
+        #[strong]
+        p,
+        move |_| {
+            p.talk.view.borrow_mut().take();
+        }
+    ));
+    dialog.present(Some(&app.window));
+    entry.grab_focus();
+}
+
 fn rank(status: &str) -> u8 {
     match status {
         "server" => 0,
@@ -253,9 +461,15 @@ fn rank(status: &str) -> u8 {
     }
 }
 
+fn place(server: &str) -> &str {
+    if server.starts_with("oppa:") { "their world" } else { server }
+}
+
 fn describe(f: &Friend) -> String {
     let game = if f.game.is_empty() { String::new() } else { format!(" | {}", f.game) };
     match f.status.as_str() {
+        "server" if f.server.strip_prefix("oppa:").is_some_and(|h| h == f.uuid.replace('-', "")) => format!("Hosting a world{game}"),
+        "server" if f.server.starts_with("oppa:") => format!("In a friend's world{game}"),
         "server" => format!("On {}{game}", f.server),
         "singleplayer" => format!("Singleplayer{game}"),
         "multiplayer" => format!("Multiplayer{game}"),

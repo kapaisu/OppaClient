@@ -70,8 +70,21 @@ public final class Platform {
 		mc.setScreen(new net.minecraft.client.gui.screen.TitleScreen());
 	}
 
+	public static boolean singleplayer() {
+		return MinecraftClient.getInstance().isInSingleplayer();
+	}
+
+	public static int openLan() {
+		net.minecraft.server.integrated.IntegratedServer server = MinecraftClient.getInstance().getServer();
+		if (server == null) return -1;
+		if (server.isRemote()) return server.getServerPort();
+		int port = dev.oppaclient.social.Hosting.freePort();
+		return port > 0 && server.openToLan(server.getDefaultGameMode(), false, port) ? port : -1;
+	}
+
 	public static void join(String address) {
 		MinecraftClient mc = MinecraftClient.getInstance();
+		if (dev.oppaclient.social.Hosting.redirect(address, a -> mc.execute(() -> join(a)))) return;
 		leave();
 		ServerInfo info = new ServerInfo(address, address, ServerInfo.ServerType.OTHER);
 		ConnectScreen.connect(new TitleScreen(), mc, ServerAddress.parse(address), info, false, null);

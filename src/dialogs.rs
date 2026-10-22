@@ -579,7 +579,7 @@ pub fn instance_settings(app: &Rc<App>) {
     let Some(inst) = app.current() else { return };
 
     let name = adw::EntryRow::builder().title("Name").text(&inst.name).build();
-    let total_mb = system_memory_mb();
+    let total_mb = crate::tune::memory_mb();
     let memory = adw::SpinRow::builder()
         .title("Memory")
         .subtitle(format!("In MB. This PC has {} GB.", (total_mb as f64 / 1024.0).round()))
@@ -684,14 +684,3 @@ pub fn instance_settings(app: &Rc<App>) {
     dialog.present(Some(&app.window));
 }
 
-fn system_memory_mb() -> u64 {
-    std::fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|s| {
-            s.lines()
-                .find_map(|l| l.strip_prefix("MemTotal:"))
-                .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
-        })
-        .map(|kb| kb / 1024)
-        .unwrap_or(8192)
-}

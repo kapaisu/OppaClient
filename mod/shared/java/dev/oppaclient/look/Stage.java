@@ -167,7 +167,7 @@ public final class Stage {
 		sp = (float) Math.sin(pitch);
 		extras.clear();
 		Hats.build(extras, hat, time);
-		Wings.build(extras, wings, time, 0);
+		Wings.build(extras, wings, time, time * 1.6f, 0);
 		Auras.build(extras, aura, time);
 
 		float scale = h / 52f;
@@ -213,6 +213,10 @@ public final class Stage {
 		float[] nrm = m.normals();
 		int[] col = m.colors();
 		byte kind = m.kinds()[i];
+		if (kind == Mesh.HALO) {
+			halo(pos[i * 12], pos[i * 12 + 1], pos[i * 12 + 2], nrm[i * 3], col[i * 4], cx, cy, scale);
+			return;
+		}
 		float nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
 		float rnx = nx * cyw + nz * syw, rnz = -nx * syw + nz * cyw;
 		float rny = ny * cp - rnz * sp;
@@ -231,6 +235,23 @@ public final class Stage {
 		}
 		target.quad(sx[0], sy[0], tint(col[i * 4], bright), sx[1], sy[1], tint(col[i * 4 + 1], bright),
 				sx[2], sy[2], tint(col[i * 4 + 2], bright), sx[3], sy[3], tint(col[i * 4 + 3], bright));
+	}
+
+	private void halo(float px, float py, float pz, float r, int c, float cx, float cy, float scale) {
+		float rx = px * cyw + pz * syw, rz = -px * syw + pz * cyw;
+		float ry = py * cp - rz * sp;
+		rz = py * sp + rz * cp;
+		float persp = 1f / (1f + rz * 0.006f);
+		float x = cx + rx * scale * persp, y = cy + ry * scale * persp, size = r * scale * persp;
+		int a = c >>> 24, core = Mesh.alpha(c, a / 255f), mid = Mesh.alpha(c, a / 255f * 0.4f), edge = Mesh.alpha(c, 0);
+		int seg = 16;
+		for (int k = 0; k < seg; k++) {
+			double a0 = Math.PI * 2 * k / seg, a1 = Math.PI * 2 * (k + 1) / seg;
+			float c0 = (float) Math.cos(a0), s0 = (float) Math.sin(a0), c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+			float in = size * 0.35f;
+			light.quad(x, y, core, x + c0 * in, y + s0 * in, mid, x + c1 * in, y + s1 * in, mid, x, y, core);
+			light.quad(x + c0 * in, y + s0 * in, mid, x + c0 * size, y + s0 * size, edge, x + c1 * size, y + s1 * size, edge, x + c1 * in, y + s1 * in, mid);
+		}
 	}
 
 	private static int tint(int c, float f) {

@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 use adw::prelude::*;
@@ -17,6 +18,7 @@ enum Status {
     Started,
     Exited { code: Option<i32>, start: i64, secs: u64, killed: bool },
     Switched(Account),
+    Tuned(Vec<String>, Option<u32>),
     Failed(String),
 }
 
@@ -36,6 +38,8 @@ struct Ui {
     strip: gtk::DrawingArea,
     log: gtk::TextView,
     log_reveal: gtk::Revealer,
+    lines: RefCell<VecDeque<String>>,
+    fresh: Cell<usize>,
     body: gtk::Stack,
     running: RefCell<Option<Running>>,
     sessions: RefCell<Vec<Session>>,
@@ -162,6 +166,8 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         strip,
         log,
         log_reveal,
+        lines: RefCell::new(VecDeque::new()),
+        fresh: Cell::new(0),
         body: body.clone(),
         running: RefCell::new(None),
         sessions: RefCell::new(Vec::new()),
@@ -180,6 +186,11 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         #[weak]
         ui,
         move |_| ui.log_reveal.set_reveal_child(false)
+    ));
+    ui.log.connect_map(glib::clone!(
+        #[weak]
+        ui,
+        move |_| flush_log(&ui)
     ));
     ui.play.connect_clicked(glib::clone!(
         #[weak]
@@ -224,11 +235,12 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         #[weak]
         ui,
         move |_, _| {
-            if ui.log.buffer().char_count() == 0 {
+            if ui.log.buffer().char_count() == 0 && ui.lines.borrow().is_empty() {
                 if let Some(inst) = app.current() {
                     let latest = inst.game_dir().join("logs/latest.log");
                     let text = std::fs::read_to_string(latest).unwrap_or_else(|_| "No log yet.".into());
-                    ui.log.buffer().set_text(&text);
+                    let all: Vec<&str> = text.lines().collect();
+                    ui.log.buffer().set_text(&all[all.len().saturating_sub(LOG_LINES)..].join("\n"));
                 }
             }
             ui.log_reveal.set_reveal_child(true);
@@ -450,6 +462,7 @@ pub fn relative_day(t: i64) -> String {
 }
 
 const DAYS: usize = 30;
+const LOG_LINES: usize = 2000;
 const BAR: f64 = 4.0;
 const GAP: f64 = 3.0;
 
@@ -506,25 +519,53 @@ fn scroll_to_end(view: &gtk::TextView) {
     buf.delete_mark(&mark);
 }
 
-fn append_log(view: &gtk::TextView, line: &str) {
-    let buf = view.buffer();
-    let adj = view.vadjustment();
-    let at_bottom = adj.as_ref().is_none_or(|a| a.value() + a.page_size() >= a.upper() - 40.0);
-    let mut end = buf.end_iter();
-    let loud = line.contains("ERROR") || line.contains("FATAL") || line.contains("Exception") || line.starts_with("\tat ");
-    if loud {
-        buf.insert_with_tags_by_name(&mut end, line, &["err"]);
-    } else {
-        buf.insert(&mut end, line);
+fn loud(line: &str) -> bool {
+    line.contains("ERROR") || line.contains("FATAL") || line.contains("Exception") || line.starts_with("\tat ")
+}
+
+fn keep_line(ui: &Ui, line: String) {
+    let mut lines = ui.lines.borrow_mut();
+    lines.push_back(line);
+    if lines.len() > LOG_LINES {
+        lines.pop_front();
     }
-    buf.insert(&mut buf.end_iter(), "\n");
-    if buf.line_count() > 4000 {
+    ui.fresh.set(ui.fresh.get() + 1);
+}
+
+fn flush_log(ui: &Ui) {
+    let n = ui.fresh.get();
+    if n == 0 || !ui.log_reveal.reveals_child() || !ui.log.is_mapped() {
+        return;
+    }
+    ui.fresh.set(0);
+    let lines = ui.lines.borrow();
+    let buf = ui.log.buffer();
+    let adj = ui.log.vadjustment();
+    let at_bottom = adj.as_ref().is_none_or(|a| a.value() + a.page_size() >= a.upper() - 40.0);
+    if n >= lines.len() {
+        buf.set_text("");
+    }
+    let mut plain = String::new();
+    for line in lines.iter().skip(lines.len().saturating_sub(n)) {
+        if loud(line) {
+            buf.insert(&mut buf.end_iter(), &plain);
+            plain.clear();
+            buf.insert_with_tags_by_name(&mut buf.end_iter(), line, &["err"]);
+            buf.insert(&mut buf.end_iter(), "\n");
+        } else {
+            plain.push_str(line);
+            plain.push('\n');
+        }
+    }
+    buf.insert(&mut buf.end_iter(), &plain);
+    let count = buf.line_count() as usize;
+    if count > LOG_LINES + LOG_LINES / 4 {
         let mut start = buf.start_iter();
-        let mut cut = buf.iter_at_line(1000).unwrap_or(buf.start_iter());
+        let mut cut = buf.iter_at_line((count - LOG_LINES) as i32).unwrap_or(buf.start_iter());
         buf.delete(&mut start, &mut cut);
     }
     if at_bottom {
-        scroll_to_end(view);
+        scroll_to_end(&ui.log);
     }
 }
 
@@ -557,10 +598,17 @@ fn launch(app: &Rc<App>, ui: &Rc<Ui>, join: Option<String>) {
 
     net::rt().spawn(run(inst.clone(), acc, join, lines_tx, kill_rx, status_tx));
 
-    let view = ui.log.clone();
+    ui.lines.borrow_mut().clear();
+    ui.fresh.set(0);
+    let log_ui = ui.clone();
     glib::spawn_future_local(async move {
         while let Ok(line) = lines_rx.recv().await {
-            append_log(&view, &line);
+            keep_line(&log_ui, line);
+            glib::timeout_future(std::time::Duration::from_millis(250)).await;
+            while let Ok(line) = lines_rx.try_recv() {
+                keep_line(&log_ui, line);
+            }
+            flush_log(&log_ui);
         }
     });
 
@@ -577,8 +625,15 @@ fn launch(app: &Rc<App>, ui: &Rc<Ui>, join: Option<String>) {
                     if let Some(r) = ui.running.borrow_mut().as_mut() {
                         r.started = Some(now());
                     }
-                    ui.log_reveal.set_reveal_child(true);
                     refresh(&app, &ui);
+                }
+                Status::Tuned(notes, memory) => {
+                    if let Some(m) = memory {
+                        app.edit_instance(&inst.dir, |i| i.memory_mb = m);
+                    }
+                    if !notes.is_empty() {
+                        app.toast(&notes.join(" | "));
+                    }
                 }
                 Status::Switched(acc) => {
                     let mut roster = auth::roster();
@@ -719,7 +774,7 @@ fn quick_play(game: &str, server: &str) -> Vec<String> {
 }
 
 async fn run(
-    inst: Instance,
+    mut inst: Instance,
     acc: Account,
     join: Option<String>,
     lines: async_channel::Sender<String>,
@@ -728,6 +783,15 @@ async fn run(
 ) {
     let key = switch_key();
     let _ = tokio::fs::remove_dir_all(inst.game_dir().join(".oppa")).await;
+    let checked = inst.clone();
+    if let Ok(report) = tokio::task::spawn_blocking(move || crate::tune::check(&checked)).await {
+        if let Some(m) = report.memory {
+            inst.memory_mb = m;
+        }
+        if !report.notes.is_empty() || report.memory.is_some() {
+            let _ = status.send(Status::Tuned(report.notes, report.memory)).await;
+        }
+    }
     let result = async {
         let job = Job::begin(format!("Preparing {}", inst.name));
         let acc2 = match auth::fresh(&acc).await {
@@ -752,8 +816,14 @@ async fn run(
         cmd.env("OPPA_ACCOUNTS", accounts.join(";"));
         cmd.env("OPPA_SKINS", crate::wardrobe::library_dir());
         cmd.env("OPPA_SWITCH_KEY", &key);
-        if let Some(server) = &join {
-            cmd.args(quick_play(&inst.game_version, server));
+        match &join {
+            Some(world) if world.starts_with("oppa:") => {
+                cmd.env("OPPA_JOIN", world);
+            }
+            Some(server) => {
+                cmd.args(quick_play(&inst.game_version, server));
+            }
+            None => {}
         }
         cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         let child = cmd.spawn().map_err(|e| anyhow::anyhow!("Couldn't start Java: {e}"))?;

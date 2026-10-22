@@ -3,6 +3,8 @@
 	"package": "dev.oppaclient.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
+		"EntityCullMixin",
+		"ParticleLimitMixin",
 		"BadgeMixin",
 		"StandBadgeMixin",
 		"TextDisplayBadgeMixin",

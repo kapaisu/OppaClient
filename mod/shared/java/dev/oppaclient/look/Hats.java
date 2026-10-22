@@ -36,28 +36,8 @@ public final class Hats {
 	private static void halo(Mesh m, float x, float y, float z, float r, int c, float alpha) {
 		float k = alpha * strength;
 		if (k <= 0.01f) return;
-		layer(m, x, y, z, r * 0.45f, Mesh.mix(c, 0xFFFFFFFF, 0.35f), Math.min(1, k * 1.2f));
-		layer(m, x, y, z, r, c, Math.min(1, k * 0.6f));
-		layer(m, x, y, z, r * 1.9f, c, Math.min(1, k * 0.22f));
-	}
-
-	private static void layer(Mesh m, float x, float y, float z, float r, int c, float alpha) {
-		byte pen = m.pen();
-		m.pen(Mesh.GLOW);
-		int in = Mesh.alpha(c, alpha), out = Mesh.alpha(c, 0);
-		int n = 10;
-		for (int plane = 0; plane < 3; plane++) {
-			for (int k = 0; k < n; k++) {
-				double a0 = Math.PI * 2 * k / n, a1 = Math.PI * 2 * (k + 1) / n;
-				float u0 = Shapes.cos(a0) * r, v0 = Shapes.sin(a0) * r, u1 = Shapes.cos(a1) * r, v1 = Shapes.sin(a1) * r;
-				switch (plane) {
-					case 0 -> m.tri(x, y, z, x + u0, y + v0, z, x + u1, y + v1, z, in, out, out);
-					case 1 -> m.tri(x, y, z, x, y + v0, z + u0, x, y + v1, z + u1, in, out, out);
-					default -> m.tri(x, y, z, x + u0, y, z + v0, x + u1, y, z + v1, in, out, out);
-				}
-			}
-		}
-		m.pen(pen);
+		m.halo(x, y, z, r * 1.1f, Mesh.alpha(Mesh.mix(c, 0xFFFFFFFF, 0.35f), Math.min(1, k)));
+		m.halo(x, y, z, r * 2.6f, Mesh.alpha(c, Math.min(1, k * 0.45f)));
 	}
 
 	private static void gem(Mesh m, float x, float y, float z, float s, int c, float pulse) {

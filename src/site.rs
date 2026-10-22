@@ -58,9 +58,10 @@ pub fn token() -> Option<String> {
     session().1.borrow().clone()
 }
 
-pub async fn token_changed() {
+pub fn token_watch() -> watch::Receiver<Option<String>> {
     let mut rx = session().1.clone();
-    let _ = rx.changed().await;
+    rx.mark_unchanged();
+    rx
 }
 
 pub async fn wait_token(limit: Duration) -> Option<String> {
@@ -86,7 +87,8 @@ pub fn from_log(line: &str, share_server: bool) {
     match kind {
         "menu" => set_status("menu", "", game),
         "singleplayer" => set_status("singleplayer", "", game),
-        "server" if share_server && !server.is_empty() => set_status("server", server, game),
+        "hosting" if server.starts_with("oppa:") => set_status("server", server, game),
+        "server" if server.starts_with("oppa:") || share_server && !server.is_empty() => set_status("server", server, game),
         _ => set_status("multiplayer", "", game),
     }
 }
@@ -129,7 +131,7 @@ pub fn start(acc: Option<crate::auth::Account>) {
             let _ = post::<serde_json::Value>("ping.php", json!({ "token": token, "status": p.status, "server": p.server, "game": p.game })).await;
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_secs(60)) => {}
-                _ = changed().notified() => {}
+                _ = changed().notified() => tokio::time::sleep(Duration::from_secs(3)).await,
             }
             if !current() {
                 return;
@@ -233,6 +235,19 @@ pub struct Social {
     pub outgoing: Vec<Person>,
     #[serde(default)]
     pub invites: Vec<Invite>,
+}
+
+pub async fn relay() -> anyhow::Result<(String, u16)> {
+    #[derive(Deserialize)]
+    struct Relay {
+        host: String,
+        port: u16,
+    }
+    let r: Relay = post("relay.php", json!({})).await?;
+    if r.host.is_empty() || !r.host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') {
+        bail!("bad relay address");
+    }
+    Ok((r.host, r.port))
 }
 
 pub async fn social() -> anyhow::Result<Social> {

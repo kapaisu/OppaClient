@@ -23,7 +23,7 @@ public final class Social {
 		public String describe() {
 			String v = game.isEmpty() ? "" : " | " + game;
 			return switch (status) {
-				case "server" -> "On " + server + v;
+				case "server" -> server.startsWith(Hosting.SCHEME) ? (Relay.plain(server.substring(Hosting.SCHEME.length())).equals(Relay.plain(uuid)) ? "Hosting a world" : "In a friend's world") + v : "On " + server + v;
 				case "singleplayer" -> "Singleplayer" + v;
 				case "multiplayer" -> "Multiplayer" + v;
 				case "menu" -> "In game" + v;
@@ -116,7 +116,7 @@ public final class Social {
 		}
 		for (Invite i : next.invites()) {
 			if (seenInvites.add(i.id()) && !quiet) {
-				Toasts.show(i.name() + " invited you", i.server(), Toasts.Kind.INVITE);
+				Toasts.show(i.name() + " invited you", place(i.server()), Toasts.Kind.INVITE);
 			}
 		}
 		for (Person p : next.incoming()) {
@@ -171,6 +171,10 @@ public final class Social {
 			case "launcher" -> 2;
 			default -> 3;
 		};
+	}
+
+	public static String place(String server) {
+		return server.startsWith(Hosting.SCHEME) ? "their world" : server;
 	}
 
 	public static String ago(long secs) {

@@ -2,6 +2,7 @@
 
 mod auth;
 mod browse;
+mod chat;
 mod bundled;
 mod crash;
 mod dialogs;
@@ -20,6 +21,7 @@ mod prefs;
 mod runtime;
 mod site;
 mod skin;
+mod tune;
 mod update;
 mod vault;
 mod wardrobe;

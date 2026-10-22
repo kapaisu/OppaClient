@@ -72,6 +72,8 @@ public final class Config {
 
 	public int backgroundFps = 30;
 	public int menuFps = 60;
+	public String particles = "Reduced";
+	public String entities = "Reduced";
 
 	public static Config get() {
 		if (current == null) {

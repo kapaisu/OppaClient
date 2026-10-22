@@ -35,6 +35,10 @@ public final class Api {
 		token = next;
 	}
 
+	static String token() {
+		return token;
+	}
+
 	public static boolean signedIn() {
 		String t = token;
 		return t != null && t.matches("[0-9a-f]{64}");

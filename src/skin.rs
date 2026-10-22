@@ -123,11 +123,15 @@ pub fn page(app: &Rc<App>) -> gtk::Widget {
         glib::ControlFlow::Break,
         move |area, _| {
             let v = p.spin.get();
-            if v.abs() > 0.0005 {
+            let spinning = v.abs() > 0.0005;
+            if spinning {
                 p.model.borrow_mut().yaw += v;
                 p.spin.set(v * 0.92);
             }
-            area.queue_draw();
+            let focused = area.root().and_downcast::<gtk::Window>().is_some_and(|w| w.is_active());
+            if spinning || focused {
+                area.queue_draw();
+            }
             glib::ControlFlow::Continue
         }
     ));

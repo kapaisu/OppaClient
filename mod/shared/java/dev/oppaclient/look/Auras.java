@@ -22,8 +22,7 @@ public final class Auras {
 	private static void orb(Mesh m, float x, float y, float z, float r, int glow, int core) {
 		m.pen(Mesh.BRIGHT);
 		Shapes.sphere(m, x, y, z, r, Mesh.mix(core, glow, 0.25f), 4, 6);
-		m.pen(Mesh.GLOW);
-		Shapes.sphere(m, x, y, z, r * 2.1f, Mesh.alpha(glow, 0.3f), 4, 6);
+		m.halo(x, y, z, r * 3.4f, Mesh.alpha(glow, 0.7f));
 	}
 
 	private static void orbit(Mesh m, int glow, int core, float t) {
@@ -37,8 +36,7 @@ public final class Auras {
 				if (k == 0) {
 					orb(m, x, y, z, 1.1f, glow, core);
 				} else {
-					m.pen(Mesh.GLOW);
-					m.gem(x, y, z, 0.75f * fade, Mesh.alpha(glow, 0.7f * fade), Mesh.alpha(glow, 0.2f * fade));
+					m.halo(x, y, z, 2.2f * fade, Mesh.alpha(glow, 0.6f * fade));
 				}
 			}
 		}
@@ -104,8 +102,7 @@ public final class Auras {
 			float size = 0.35f + 0.45f * fade;
 			m.pen(Mesh.BRIGHT);
 			m.gem(x, y, z, size, c, Mesh.mix(c, spark, 0.5f));
-			m.pen(Mesh.GLOW);
-			m.gem(x, y, z, size * 2.2f, Mesh.alpha(glow, 0.35f * fade), Mesh.alpha(glow, 0));
+			m.halo(x, y, z, size * 4f, Mesh.alpha(glow, 0.56f * fade));
 		}
 		m.pen(Mesh.GLOW);
 		band(m, 23.8f, 9f, 6f, 0, 28, Mesh.alpha(glow, 0.35f), Mesh.alpha(glow, 0), t * 0.2f);
@@ -138,8 +135,7 @@ public final class Auras {
 				float x = Shapes.cos(a) * r, z = Shapes.sin(a) * r;
 				m.pen(Mesh.BRIGHT);
 				m.gem(x, y, z, 0.3f + 0.45f * fade, Mesh.mix(glow, core, fade * 0.6f), glow);
-				m.pen(Mesh.GLOW);
-				m.gem(x, y, z, 0.9f + 0.9f * fade, Mesh.alpha(glow, 0.35f * fade), Mesh.alpha(glow, 0));
+				m.halo(x, y, z, 1.6f + 1.6f * fade, Mesh.alpha(glow, 0.56f * fade));
 			}
 		}
 	}
@@ -164,8 +160,7 @@ public final class Auras {
 			float x = Shapes.cos(ang) * rad, z = Shapes.sin(ang) * rad;
 			m.pen(Mesh.BRIGHT);
 			m.gem(x, y, z, size, c, Mesh.mix(c, 0xFFFFFFFF, 0.4f));
-			m.pen(Mesh.GLOW);
-			m.gem(x, y, z, size * 2.6f, Mesh.alpha(c, 0.3f * fade), Mesh.alpha(c, 0));
+			m.halo(x, y, z, size * 4.7f, Mesh.alpha(c, 0.48f * fade));
 		}
 		float ride = 22.5f - 15f * (0.5f - 0.5f * Shapes.cos(t * 0.9f));
 		int dashes = 10, seg = 4;
