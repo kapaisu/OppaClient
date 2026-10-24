@@ -16,7 +16,6 @@ use tokio::sync::mpsc;
 use crate::net;
 
 const PIN: &str = "c834003bd0436b8eeb64d8aadc552ecef1c9c7859022de9bdbccbd6fd81166d0";
-const NAME: &str = "relay.oppaclient.com";
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Message {
@@ -136,7 +135,7 @@ async fn connect(token: &str) -> anyhow::Result<(tokio_rustls::client::TlsStream
         .with_no_client_auth();
     let tcp = tokio::time::timeout(Duration::from_secs(8), TcpStream::connect((host.as_str(), port))).await??;
     tcp.set_nodelay(true)?;
-    let name = ServerName::try_from(NAME)?.to_owned();
+    let name = ServerName::try_from(host.clone())?;
     let mut tls = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await?;
     let mut hello = json!({"op": "chat", "token": token}).to_string();
     hello.push('\n');

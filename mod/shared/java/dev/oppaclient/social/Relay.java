@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
@@ -71,18 +72,28 @@ final class Relay {
 		boolean local = over != null && over.startsWith("127.0.0.1:");
 		InetSocketAddress address = local ? new InetSocketAddress("127.0.0.1", Integer.parseInt(over.substring(over.indexOf(':') + 1))) : where();
 		String pin = local && System.getenv("OPPA_RELAY_PIN") != null ? System.getenv("OPPA_RELAY_PIN") : PIN;
-		SSLSocket socket;
+		SSLContext ctx;
 		try {
-			SSLContext ctx = SSLContext.getInstance("TLS");
+			ctx = SSLContext.getInstance("TLS");
 			ctx.init(null, new TrustManager[] {pinned(pin)}, null);
-			socket = (SSLSocket) ctx.getSocketFactory().createSocket();
 		} catch (Exception e) {
 			throw new IOException("Couldn't set up a secure connection", e);
 		}
-		socket.connect(address, 8000);
-		socket.setTcpNoDelay(true);
-		socket.setSoTimeout(30000);
-		socket.startHandshake();
+		Socket plain = new Socket();
+		SSLSocket socket;
+		try {
+			plain.connect(address, 8000);
+			plain.setTcpNoDelay(true);
+			socket = (SSLSocket) ctx.getSocketFactory().createSocket(plain, address.getHostString(), address.getPort(), true);
+			socket.setSoTimeout(30000);
+			socket.startHandshake();
+		} catch (SSLException e) {
+			plain.close();
+			throw new IOException("Your network or antivirus is blocking Oppa. Try another network or allow Minecraft through it.", e);
+		} catch (IOException e) {
+			plain.close();
+			throw new IOException("Couldn't reach Oppa. Check your internet connection.", e);
+		}
 		Link link = new Link(socket);
 		JsonObject hello = extra == null ? new JsonObject() : extra.deepCopy();
 		hello.addProperty("op", op);

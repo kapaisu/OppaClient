@@ -9,11 +9,31 @@ public final class Limits {
 	public static final int DROP = 1, DECOR = 2;
 
 	private static int spawned, hits;
+	private static boolean deciding, keep;
 
 	private Limits() {}
 
 	public static void tick() {
 		spawned = 0;
+		deciding = false;
+	}
+
+	public static void decide(boolean admit) {
+		deciding = true;
+		keep = admit;
+	}
+
+	public static void decided() {
+		deciding = false;
+	}
+
+	public static boolean add() {
+		if (deciding) return keep;
+		String level = Config.get().particles;
+		if (!level.equals("Reduced") && !level.equals("Minimal")) return true;
+		if (spawned >= (level.equals("Minimal") ? 60 : 250)) return false;
+		spawned++;
+		return true;
 	}
 
 	public static boolean particle(boolean hit, double distSq) {
